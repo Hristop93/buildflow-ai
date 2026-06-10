@@ -18,7 +18,6 @@ SPEC.md                 # пълната функционална специфи
 
 ## Пускане на тестовете
 ```bash
-cd buildflow-ai
 python backend/tests/test_engines.py
 # очаквано: 7/7 tests passed
 ```
