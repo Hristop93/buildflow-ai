@@ -1,8 +1,8 @@
 """Buildflow AI — FastAPI application.
 
-Phase 1 surface: create a project with params, run the recalc pipeline over the
-four engines, and read back computed versions. Auth lands next; until then a
-single demo user satisfies the projects.user_id FK (see _demo_user).
+Phase 1 surface: email/password auth (httpOnly JWT cookie), create a project
+with params, run the recalc pipeline over the four engines, and read back
+computed versions. Project endpoints require the caller to own the project.
 """
 from __future__ import annotations
 
@@ -15,21 +15,12 @@ from backend.db.base import get_db
 from backend.db.models.app import User, Project, ProjectParam, ProjectVersion
 from backend.db.models.core import ProjectType
 from backend.api import schemas
-from backend.services.recalc import run_recalc, ProjectNotFound
+from backend.api.auth import router as auth_router
+from backend.api.deps import get_current_user, owned_project_or_404
+from backend.services.recalc import run_recalc
 
 app = FastAPI(title="Buildflow AI", version="0.1.0")
-
-# --- Temporary, until auth (next step) ---------------------------------------
-DEMO_EMAIL = "demo@buildflow.local"
-
-
-def _demo_user(db: Session) -> User:
-    user = db.scalar(select(User).where(User.email == DEMO_EMAIL))
-    if user is None:
-        user = User(email=DEMO_EMAIL, password_hash="!", full_name="Demo (pre-auth)")
-        db.add(user)
-        db.flush()
-    return user
+app.include_router(auth_router)
 
 
 # --- Health & catalog --------------------------------------------------------
@@ -46,13 +37,16 @@ def project_types(db: Session = Depends(get_db)):
     ]
 
 
-# --- Projects ----------------------------------------------------------------
+# --- Projects (owner-scoped) -------------------------------------------------
 @app.post("/projects", response_model=schemas.ProjectOut, status_code=201)
-def create_project(payload: schemas.ProjectCreate, db: Session = Depends(get_db)):
+def create_project(
+    payload: schemas.ProjectCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     if db.get(ProjectType, payload.project_type_id) is None:
         raise HTTPException(400, f"unknown project_type_id: {payload.project_type_id}")
 
-    user = _demo_user(db)
     project = Project(
         user_id=user.id,
         name=payload.name,
@@ -76,25 +70,31 @@ def create_project(payload: schemas.ProjectCreate, db: Session = Depends(get_db)
 
 
 @app.get("/projects/{project_id}", response_model=schemas.ProjectOut)
-def get_project(project_id: int, db: Session = Depends(get_db)):
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(404, "project not found")
-    return project
+def get_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return owned_project_or_404(db, project_id, user)
 
 
 @app.post("/projects/{project_id}/recalc")
-def recalc(project_id: int, db: Session = Depends(get_db)):
-    try:
-        return run_recalc(db, project_id)
-    except ProjectNotFound:
-        raise HTTPException(404, "project not found")
+def recalc(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    owned_project_or_404(db, project_id, user)
+    return run_recalc(db, project_id)
 
 
 @app.get("/projects/{project_id}/versions", response_model=list[schemas.VersionOut])
-def list_versions(project_id: int, db: Session = Depends(get_db)):
-    if db.get(Project, project_id) is None:
-        raise HTTPException(404, "project not found")
+def list_versions(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    owned_project_or_404(db, project_id, user)
     return db.scalars(
         select(ProjectVersion)
         .where(ProjectVersion.project_id == project_id)
