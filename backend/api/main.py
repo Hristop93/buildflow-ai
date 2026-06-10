@@ -14,10 +14,11 @@ from sqlalchemy.orm import Session
 from backend.db.base import get_db
 from backend.db.models.app import User, Project, ProjectParam, ProjectVersion
 from backend.db.models.core import ProjectType
-from backend.api import schemas
+from backend.api import schemas, tiers
 from backend.api.auth import router as auth_router
 from backend.api.deps import get_current_user, owned_project_or_404
 from backend.services.recalc import run_recalc
+from backend.services.sections import build_section, NoComputedVersion
 
 app = FastAPI(title="Buildflow AI", version="0.1.0")
 app.include_router(auth_router)
@@ -100,3 +101,40 @@ def list_versions(
         .where(ProjectVersion.project_id == project_id)
         .order_by(ProjectVersion.version_no.desc())
     ).all()
+
+
+@app.get("/projects/{project_id}/sections/{name}")
+def get_section(
+    project_id: int,
+    name: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Tier-gated read of one project section. The server enforces access here;
+    the UI lock is cosmetic (SPEC 6)."""
+    project = owned_project_or_404(db, project_id, user)
+
+    if not tiers.is_known_section(name):
+        raise HTTPException(404, f"unknown section: {name}")
+    if not tiers.can_access(project.tier, name):
+        # Structured detail so the client can render the upgrade CTA.
+        raise HTTPException(403, {
+            "error": "section_locked",
+            "section": name,
+            "your_tier": project.tier,
+            "required_tier": tiers.required_tier(name),
+        })
+    if name not in tiers.IMPLEMENTED_SECTIONS:
+        raise HTTPException(501, f"section '{name}' is not available in this phase")
+
+    try:
+        data = build_section(db, project_id, name)
+    except NoComputedVersion:
+        raise HTTPException(409, "project has no computed version yet; run recalc first")
+
+    return {
+        "section": name,
+        "your_tier": project.tier,
+        "required_tier": tiers.required_tier(name),
+        "data": data,
+    }
