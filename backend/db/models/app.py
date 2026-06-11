@@ -21,6 +21,7 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
     company = Column(String, nullable=True)
+    role = Column(String, nullable=False, default="user", server_default="user")  # user | admin
     created_at = Column(DateTime(timezone=True), default=_now)
     gdpr_consent_at = Column(DateTime(timezone=True), nullable=True)
 

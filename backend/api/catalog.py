@@ -9,7 +9,8 @@ that maps between the two. Keeping it here means the engines never import the OR
 from __future__ import annotations
 
 from dataclasses import dataclass
-from sqlalchemy import select
+from datetime import date
+from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 
 from backend.db.models.core import (
@@ -69,6 +70,13 @@ def load_catalog(db: Session) -> Catalog:
         for r in db.scalars(select(Rule)).all()
     ]
 
+    # Only tariffs in force today (SPEC 4.2): valid_from <= today < valid_to.
+    # This keeps superseded versions (created by an admin revise) out of recalc.
+    today = date.today()
+    in_force = select(FeeTariff).where(
+        or_(FeeTariff.valid_from.is_(None), FeeTariff.valid_from <= today),
+        or_(FeeTariff.valid_to.is_(None), FeeTariff.valid_to > today),
+    )
     fee_tariffs = [
         {
             "id": t.id,
@@ -78,7 +86,7 @@ def load_catalog(db: Session) -> Catalog:
             "rate": t.rate,
             "act": t.act_id,
         }
-        for t in db.scalars(select(FeeTariff)).all()
+        for t in db.scalars(in_force).all()
     ]
 
     acts = [

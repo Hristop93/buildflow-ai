@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+from datetime import date
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
 
@@ -25,6 +26,7 @@ class UserOut(BaseModel):
     email: str
     full_name: str | None
     company: str | None
+    role: str
 
 
 class ProjectCreate(BaseModel):
@@ -57,3 +59,71 @@ class VersionOut(BaseModel):
     version_no: int
     reason: str | None
     created_at: Any
+
+
+# --- Admin: normative acts ---------------------------------------------------
+class ActCreate(BaseModel):
+    title: str
+    level: str = "state"            # state | municipal
+    article: str | None = None
+    valid_from: date
+    act_type: str | None = None
+    municipality_id: int | None = None
+    source_url: str | None = None
+
+
+class ActRevise(BaseModel):
+    """Edits create a NEW superseding version (core data is append-only)."""
+    valid_from: date               # the day the new version takes effect
+    title: str | None = None
+    article: str | None = None
+    level: str | None = None
+    source_url: str | None = None
+
+
+class ActOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    level: str
+    article: str | None
+    valid_from: date
+    valid_to: date | None
+    supersedes_id: str | None
+    source_url: str | None
+    verified_at: date | None
+    verified_by: str | None
+
+
+# --- Admin: fee tariffs ------------------------------------------------------
+class TariffCreate(BaseModel):
+    procedure_id: str
+    basis: str                     # fixed | per_sqm_rzp | pct_of_value | per_mw
+    rate: float
+    description: str | None = None
+    municipality_id: int | None = None
+    act_id: str | None = None
+    valid_from: date | None = None
+
+
+class TariffRevise(BaseModel):
+    valid_from: date
+    rate: float | None = None
+    description: str | None = None
+    act_id: str | None = None
+    municipality_id: int | None = None
+
+
+class TariffOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    procedure_id: str
+    description: str | None
+    basis: str
+    rate: float
+    municipality_id: int | None
+    act_id: str | None
+    valid_from: date | None
+    valid_to: date | None
