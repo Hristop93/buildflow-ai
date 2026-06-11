@@ -7,7 +7,7 @@ computed versions. Project endpoints require the caller to own the project.
 from __future__ import annotations
 
 import json
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from backend.api.admin import router as admin_router
 from backend.api.deps import get_current_user, owned_project_or_404
 from backend.services.recalc import run_recalc
 from backend.services.sections import build_section, latest_snapshot, NoComputedVersion
+from backend.services.export_xlsx import export_project_xlsx
 
 app = FastAPI(title="Buildflow AI", version="0.1.0")
 app.include_router(auth_router)
@@ -208,6 +209,37 @@ def list_versions(
         .where(ProjectVersion.project_id == project_id)
         .order_by(ProjectVersion.version_no.desc())
     ).all()
+
+
+XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@app.get("/projects/{project_id}/export/xlsx")
+def export_xlsx(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Excel package of the computed sections (dd tier, SPEC 6)."""
+    project = owned_project_or_404(db, project_id, user)
+    if not tiers.can_access(project.tier, "export"):
+        raise HTTPException(403, {
+            "error": "section_locked",
+            "section": "export",
+            "your_tier": project.tier,
+            "required_tier": tiers.required_tier("export"),
+        })
+    try:
+        data = export_project_xlsx(db, project_id)
+    except NoComputedVersion:
+        raise HTTPException(409, "project has no computed version yet; run recalc first")
+
+    filename = f"buildflow-project-{project_id}.xlsx"
+    return Response(
+        content=data,
+        media_type=XLSX_MEDIA,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/projects/{project_id}/sections/{name}")

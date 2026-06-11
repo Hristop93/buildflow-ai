@@ -30,7 +30,7 @@ export default function Project() {
   const [project, setProject] = useState<ProjectT | null>(null)
   const [active, setActive] = useState('summary')
   const [section, setSection] = useState<SectionResponse | null>(null)
-  const [state, setState] = useState<'ok' | 'loading' | 'locked' | 'soon' | 'norecalc' | 'error'>('loading')
+  const [state, setState] = useState<'ok' | 'loading' | 'locked' | 'soon' | 'norecalc' | 'error' | 'export'>('loading')
   const [recalcing, setRecalcing] = useState(false)
 
   useEffect(() => {
@@ -44,6 +44,12 @@ export default function Project() {
     if (tierRank < TIER_RANK[meta.tier]) {
       setState('locked')
       setSection(null)
+      return
+    }
+    // Export isn't section data — it's a file download; render the panel directly.
+    if (key === 'export') {
+      setSection(null)
+      setState('export')
       return
     }
     setState('loading')
@@ -111,6 +117,7 @@ export default function Project() {
           {state === 'loading' && <p className="muted">Зареждане…</p>}
           {state === 'locked' && <LockedPanel required={activeMeta.tier} />}
           {state === 'soon' && <p className="muted">Тази секция предстои (фаза 3).</p>}
+          {state === 'export' && <ExportSection projectId={id!} />}
           {state === 'norecalc' && (
             <p className="muted">Още няма изчисление. <button className="link" onClick={recalc}>Преизчисли сега</button></p>
           )}
@@ -242,6 +249,21 @@ function ScheduleSection({
         </div>
       )}
     </>
+  )
+}
+
+function ExportSection({ projectId }: { projectId: string }) {
+  const today = new Date().toLocaleDateString('bg-BG')
+  return (
+    <div style={{ textAlign: 'center', padding: '24px 12px' }}>
+      <p>Excel пакет с всички секции (Резюме, Маршрут, Такси, График, Икономика).</p>
+      <a href={`/projects/${projectId}/export/xlsx`} download>
+        <button className="amber" type="button">⬇ Изтегли Excel</button>
+      </a>
+      <p className="muted" style={{ marginTop: 16, fontSize: 13 }}>
+        Докладът се генерира от последното изчисление и носи печат „изчислено по актове в сила към {today}“.
+      </p>
+    </div>
   )
 }
 
