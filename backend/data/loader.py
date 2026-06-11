@@ -8,14 +8,16 @@ from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from sqlalchemy import select
+
 from backend.db.base import SessionLocal
 from backend.db.models.core import (
     Institution, NormativeAct, Procedure, Dependency,
-    FeeTariff, Rule, ProjectType,
+    FeeTariff, Rule, ProjectType, Municipality,
 )
 from backend.data.seed import (
     INSTITUTIONS, ACTS, PROCEDURES, DEPENDENCIES,
-    FEE_TARIFFS, RULES, PROJECT_TYPES,
+    FEE_TARIFFS, RULES, PROJECT_TYPES, MUNICIPALITIES,
 )
 
 
@@ -28,6 +30,7 @@ def _parse_date(s: str | None) -> date | None:
 def load_all():
     db = SessionLocal()
     try:
+        _load_municipalities(db)
         _load_institutions(db)
         _load_acts(db)
         db.flush()
@@ -45,6 +48,20 @@ def load_all():
         raise
     finally:
         db.close()
+
+
+def _load_municipalities(db):
+    # Municipalities have autoincrement ids, so idempotency is by name.
+    for row in MUNICIPALITIES:
+        if db.scalar(select(Municipality).where(Municipality.name == row["name"])):
+            continue
+        db.add(Municipality(
+            name=row["name"],
+            region=row.get("region"),
+            coverage_status=row.get("coverage_status", "none"),
+            verified_at=_parse_date(row.get("verified_at")),
+        ))
+    print(f"  municipalities: {len(MUNICIPALITIES)}")
 
 
 def _load_institutions(db):

@@ -53,6 +53,15 @@ class ProjectTypeOut(BaseModel):
     name: str
 
 
+class MunicipalityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    region: str | None
+    coverage_status: str  # verified | partial | none
+
+
 class NodePatch(BaseModel):
     """Edit one schedule node: override its duration and/or set its status.
     Send planned_duration_days: null to clear the override (back to statutory)."""

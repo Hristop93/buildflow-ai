@@ -47,6 +47,13 @@ export interface ProjectType {
   name: string
 }
 
+export interface Municipality {
+  id: number
+  name: string
+  region: string | null
+  coverage_status: 'verified' | 'partial' | 'none'
+}
+
 export interface Project {
   id: number
   name: string
