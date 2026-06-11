@@ -119,6 +119,13 @@ def _assemble(project, graph, fee_items, fee_total, sched, econ) -> dict:
             "is_critical": nodes[pid]["critical"],
         })
 
+    # Enrich schedule nodes with the procedure name so the section is
+    # self-sufficient for a Gantt (no need to cross-reference the route).
+    schedule_nodes = {
+        pid: {**n, "name": procs[pid]["name"]}
+        for pid, n in nodes.items()
+    }
+
     return {
         "project_id": project.id,
         "tier": project.tier,
@@ -129,6 +136,6 @@ def _assemble(project, graph, fee_items, fee_total, sched, econ) -> dict:
         },
         "route": route,
         "fees": {"items": fee_items, "total": round(fee_total, 2)},
-        "schedule": {"nodes": nodes, "total_days": sched["total_days"]},
+        "schedule": {"nodes": schedule_nodes, "total_days": sched["total_days"]},
         "economics": econ,
     }
