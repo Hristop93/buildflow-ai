@@ -7,15 +7,21 @@ from __future__ import annotations
 import random
 
 
-def _npv(rate, cashflows_from_year1):
-    """Excel NPV(): discounts the first value at period 1."""
-    return sum(cf / (1 + rate) ** (i + 1) for i, cf in enumerate(cashflows_from_year1))
+def _npv(rate, cashflows_from_year1, shift=0.0):
+    """Excel NPV(): discounts the first value at period 1. A positive `shift`
+    (in years) delays every flow — the schedule-delay link (SPEC 4.4)."""
+    return sum(cf / (1 + rate) ** (i + 1 + shift) for i, cf in enumerate(cashflows_from_year1))
 
 
-def _irr(cashflows):
-    """IRR over [year0, year1, ...] via bisection."""
+def _irr(cashflows, shift=0.0):
+    """IRR over [year0, year1, ...] via bisection. `shift` delays the
+    operating flows (index >= 1) while year 0 (CAPEX) stays at t=0.
+    At shift=0 this is exactly the original integer-period IRR."""
     def f(r):
-        return sum(cf / (1 + r) ** i for i, cf in enumerate(cashflows))
+        return sum(
+            cf / (1 + r) ** (i if i == 0 else i + shift)
+            for i, cf in enumerate(cashflows)
+        )
     lo, hi = -0.95, 2.0
     flo, fhi = f(lo), f(hi)
     if flo * fhi > 0:
@@ -55,18 +61,26 @@ def annual_model(params, capex):
     return {"production": prod, "revenue": rev, "opex": opex, "depr": depr, "fcf": fcf}
 
 
-def evaluate(params, *, total_fees, p5_irr=None):
-    """Full economic evaluation. total_fees comes from FeeEngine."""
+def evaluate(params, *, total_fees, p5_irr=None, delay_days=0):
+    """Full economic evaluation. total_fees comes from FeeEngine.
+
+    delay_days (SPEC 4.4): deviation of the actual schedule from the statutory
+    one. The etalon Excel prices the statutory schedule into its baseline, so
+    only the DEVIATION shifts the operating cashflows — delay_days=0 reproduces
+    the etalon exactly; a slip pushes every flow later and IRR/NPV honestly drop.
+    """
     kw = params["power_mw"] * 1000
     capex = kw * params["specific_capex_per_kw"] + total_fees
     m = annual_model(params, capex)
     wacc = params["wacc"]
     hurdle = params["hurdle_rate"]
+    # Clamp so year-1 flows can never be discounted to before t=0.
+    shift = max(-1.0, delay_days / 365.0)
 
-    npv = -capex + _npv(wacc, m["fcf"])
-    irr = _irr([-capex] + m["fcf"])
-    lcoe = (capex + _npv(wacc, [m["opex"]] * params["years"])) / _npv(wacc, m["production"])
-    payback = capex / (sum(m["fcf"]) / len(m["fcf"]))
+    npv = -capex + _npv(wacc, m["fcf"], shift)
+    irr = _irr([-capex] + m["fcf"], shift)
+    lcoe = (capex + _npv(wacc, [m["opex"]] * params["years"], shift)) / _npv(wacc, m["production"], shift)
+    payback = capex / (sum(m["fcf"]) / len(m["fcf"])) + shift
 
     if p5_irr is not None and p5_irr >= hurdle:
         verdict = "resilient"
@@ -90,6 +104,7 @@ def evaluate(params, *, total_fees, p5_irr=None):
         "lcoe": lcoe,
         "payback_years": payback,
         "verdict": verdict,
+        "delay_days": delay_days,
         "cashflow": cashflow,
     }
 

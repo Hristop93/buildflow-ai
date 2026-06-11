@@ -89,7 +89,10 @@ def main():
     _check("edit critical node -> 200", st, 200)
     _check("delta_days = +30", r["delta_days"], 30)
     _check("new total = 450", r["result"]["summary"]["total_days"], 450)
-    _check("delta_irr reported", r["delta_irr_pp"] is not None, True)
+    # The econ<->schedule link (SPEC 4.4): a slip must honestly dent the IRR.
+    print(f"        delta_irr_pp = {r['delta_irr_pp']}")
+    _check("delay lowers IRR (delta < 0)", r["delta_irr_pp"] < 0, True)
+    _check("econ carries delay_days=30", r["result"]["economics"]["delay_days"], 30)
 
     _, sec = _req(op, "GET", f"/projects/{pid}/sections/schedule")
     _check("schedule section reflects 450", sec["data"]["schedule"]["total_days"], 450)
@@ -103,6 +106,8 @@ def main():
     _check("clear override -> 200", st, 200)
     _check("back to 420", r2["result"]["summary"]["total_days"], 420)
     _check("delta_days = -30", r2["delta_days"], -30)
+    _check("IRR recovers (delta > 0)", r2["delta_irr_pp"] > 0, True)
+    _check("etalon IRR restored", abs(r2["result"]["economics"]["irr"] - 0.1178) < 0.0015, True)
 
     # --- journal carries the edits ----------------------------------------------
     _, j = _req(op, "GET", f"/projects/{pid}/sections/journal")
