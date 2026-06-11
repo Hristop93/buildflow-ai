@@ -30,6 +30,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
+  patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
 }
 
 // --- Types mirroring the backend payloads -----------------------------------
@@ -90,6 +91,20 @@ export interface FeeItem {
   citation: FeeCitation | null
 }
 
+export interface ScheduleNode {
+  start: number
+  end: number
+  duration: number
+  critical: boolean
+  name?: string
+  status?: string
+}
+
+export interface ScheduleData {
+  nodes: Record<string, ScheduleNode>
+  total_days: number
+}
+
 export interface RecalcResult {
   project_id: number
   tier: string
@@ -97,6 +112,15 @@ export interface RecalcResult {
   summary: Summary
   route: RouteStep[]
   fees: { items: FeeItem[]; total: number }
+  schedule: ScheduleData
+  economics: Economics
+}
+
+export interface NodePatchResult {
+  version_no: number
+  delta_days: number | null
+  delta_irr_pp: number | null
+  result: RecalcResult
 }
 
 export interface CashflowPoint {

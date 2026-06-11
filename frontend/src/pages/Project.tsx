@@ -4,8 +4,9 @@ import {
   api, ApiError,
   type Project as ProjectT, type SectionResponse,
   type Summary, type RouteStep, type FeeItem, type Economics,
+  type ScheduleData, type NodePatchResult,
 } from '../api'
-import Gantt, { type GanttNode } from '../components/Gantt'
+import Gantt from '../components/Gantt'
 import CashflowChart from '../components/CashflowChart'
 
 const TIER_RANK: Record<string, number> = { free: 0, standard: 1, pro: 2, dd: 3 }
@@ -113,9 +114,132 @@ export default function Project() {
             <p className="muted">Още няма изчисление. <button className="link" onClick={recalc}>Преизчисли сега</button></p>
           )}
           {state === 'error' && <div className="error">Неуспешно зареждане на секцията.</div>}
-          {state === 'ok' && section && <SectionBody name={active} data={section.data as Record<string, unknown>} />}
+          {state === 'ok' && section && (
+            active === 'schedule' ? (
+              <ScheduleSection
+                projectId={id!}
+                data={section.data as { schedule: ScheduleData }}
+                onResult={(r) =>
+                  setSection((prev) =>
+                    prev ? { ...prev, data: { schedule: r.result.schedule, version_no: r.version_no } } : prev,
+                  )
+                }
+              />
+            ) : (
+              <SectionBody name={active} data={section.data as Record<string, unknown>} />
+            )
+          )}
         </div>
       </div>
+    </>
+  )
+}
+
+const NODE_STATUS_LABELS: Record<string, string> = {
+  pending: 'Предстои',
+  active: 'В ход',
+  done: 'Готова',
+  delayed: 'Забавена',
+}
+
+function ScheduleSection({
+  projectId,
+  data,
+  onResult,
+}: {
+  projectId: string
+  data: { schedule: ScheduleData }
+  onResult: (r: NodePatchResult) => void
+}) {
+  const sch = data.schedule
+  const [sel, setSel] = useState<string | null>(null)
+  const [dur, setDur] = useState('')
+  const [status, setStatus] = useState('pending')
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [banner, setBanner] = useState('')
+
+  const pick = (pid: string) => {
+    const n = sch.nodes[pid]
+    setSel(pid)
+    setDur(String(n.duration))
+    setStatus(n.status ?? 'pending')
+    setReason('')
+    setErr('')
+  }
+
+  const save = async () => {
+    if (!sel) return
+    const n = sch.nodes[sel]
+    const body: Record<string, unknown> = {}
+    if (Number(dur) !== n.duration) body.planned_duration_days = Number(dur)
+    if (status !== (n.status ?? 'pending')) body.status = status
+    if (!('planned_duration_days' in body) && !('status' in body)) {
+      setSel(null)
+      return
+    }
+    if (body.status === 'delayed' && !reason.trim()) {
+      setErr('Причината е задължителна при забавяне')
+      return
+    }
+    if (reason.trim()) body.reason = reason.trim()
+    setBusy(true)
+    setErr('')
+    try {
+      const r = await api.patch<NodePatchResult>(`/projects/${projectId}/nodes/${sel}`, body)
+      const d = r.delta_days ?? 0
+      const irr = r.delta_irr_pp ?? 0
+      setBanner(
+        `Промяната измести срока с ${d >= 0 ? '+' : ''}${d} дни и IRR с ${irr >= 0 ? '+' : ''}${irr} п.п. (версия ${r.version_no})`,
+      )
+      onResult(r)
+      setSel(null)
+    } catch (e) {
+      setErr(e instanceof ApiError && typeof e.detail === 'string' ? e.detail : 'Грешка при запис')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const selNode = sel ? sch.nodes[sel] : null
+
+  return (
+    <>
+      <p>
+        Общ срок: <strong>{sch.total_days}</strong> дни · <span className="tag-critical">червено = критичен път</span>
+        <span className="muted"> · клик върху ред за редакция</span>
+      </p>
+      {banner && <div className="banner">{banner}</div>}
+      <Gantt nodes={sch.nodes} totalDays={sch.total_days} selected={sel} onSelect={pick} />
+
+      {sel && selNode && (
+        <div className="card" style={{ marginTop: 16, background: 'var(--bg)' }}>
+          <h2 style={{ marginBottom: 4 }}>{selNode.name ?? sel}</h2>
+          <p className="muted" style={{ margin: 0 }}>ден {selNode.start}–{selNode.end}{selNode.critical ? ' · критичен път' : ''}</p>
+          {err && <div className="error">{err}</div>}
+          <div className="grid2">
+            <div>
+              <label>Продължителност (дни)</label>
+              <input type="number" min={0} value={dur} onChange={(e) => setDur(e.target.value)} />
+            </div>
+            <div>
+              <label>Статус</label>
+              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                {Object.entries(NODE_STATUS_LABELS).map(([v, l]) => (
+                  <option key={v} value={v}>{l}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <label>Причина {status === 'delayed' ? '(задължителна при забавяне)' : '(по избор)'}</label>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="напр. забавена доставка" />
+          <div className="row" style={{ marginTop: 14 }}>
+            <button onClick={save} disabled={busy}>{busy ? 'Запазване…' : 'Запази и преизчисли'}</button>
+            <button className="secondary" onClick={() => setSel(null)} disabled={busy}>Отказ</button>
+          </div>
+        </div>
+      )}
     </>
   )
 }
@@ -180,15 +304,7 @@ function SectionBody({ name, data }: { name: string; data: Record<string, unknow
     )
   }
 
-  if (name === 'schedule') {
-    const sch = data.schedule as { nodes: Record<string, GanttNode>; total_days: number }
-    return (
-      <>
-        <p>Общ срок: <strong>{sch.total_days}</strong> дни · <span className="tag-critical">червено = критичен път</span></p>
-        <Gantt nodes={sch.nodes} totalDays={sch.total_days} />
-      </>
-    )
-  }
+  // 'schedule' is rendered by ScheduleSection (it needs project id + editing state)
 
   if (name === 'economics') {
     const e = data.economics as Economics

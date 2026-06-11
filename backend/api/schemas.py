@@ -53,6 +53,14 @@ class ProjectTypeOut(BaseModel):
     name: str
 
 
+class NodePatch(BaseModel):
+    """Edit one schedule node: override its duration and/or set its status.
+    Send planned_duration_days: null to clear the override (back to statutory)."""
+    planned_duration_days: int | None = Field(default=None, ge=0)
+    status: str | None = None
+    reason: str | None = None  # mandatory when status='delayed' (SPEC 5.2)
+
+
 class VersionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
