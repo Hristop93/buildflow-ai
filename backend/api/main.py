@@ -16,12 +16,14 @@ from backend.db.models.app import User, Project, ProjectParam, ProjectVersion
 from backend.db.models.core import ProjectType
 from backend.api import schemas, tiers
 from backend.api.auth import router as auth_router
+from backend.api.admin import router as admin_router
 from backend.api.deps import get_current_user, owned_project_or_404
 from backend.services.recalc import run_recalc
 from backend.services.sections import build_section, NoComputedVersion
 
 app = FastAPI(title="Buildflow AI", version="0.1.0")
 app.include_router(auth_router)
+app.include_router(admin_router)
 
 
 # --- Health & catalog --------------------------------------------------------

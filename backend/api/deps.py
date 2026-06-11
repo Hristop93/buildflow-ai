@@ -22,6 +22,12 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    if user.role != "admin":
+        raise HTTPException(403, "admin access required")
+    return user
+
+
 def owned_project_or_404(db: Session, project_id: int, user: User) -> Project:
     """Fetch a project only if it belongs to the user. 404 (not 403) so we don't
     leak the existence of other users' projects."""
