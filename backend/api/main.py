@@ -72,6 +72,18 @@ def create_project(
     return project
 
 
+@app.get("/projects", response_model=list[schemas.ProjectOut])
+def list_projects(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return db.scalars(
+        select(Project)
+        .where(Project.user_id == user.id)
+        .order_by(Project.created_at.desc())
+    ).all()
+
+
 @app.get("/projects/{project_id}", response_model=schemas.ProjectOut)
 def get_project(
     project_id: int,
