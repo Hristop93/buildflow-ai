@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.models.app import ProjectVersion, Event
+from backend.engines.economics import monte_carlo
 
 
 class NoComputedVersion(Exception):
@@ -33,10 +34,25 @@ def build_section(db: Session, project_id: int, name: str) -> dict:
     """Return the data for one section. Caller has already checked tier access."""
     if name == "journal":
         return _journal(db, project_id)
+    if name == "risk":
+        return _risk(db, project_id)
 
     snapshot = latest_snapshot(db, project_id)
     # snapshot keys: summary, route, fees, schedule, economics, version_no, ...
     return {name: snapshot.get(name), "version_no": snapshot.get("version_no")}
+
+
+def _risk(db: Session, project_id: int) -> dict:
+    """Monte Carlo risk (dd tier). Computed on demand from the latest snapshot's
+    fees + the project params; seeded by project id so the same project yields
+    stable numbers across views (reproducibility, SPEC 8)."""
+    from backend.services.recalc import _load_params  # local import avoids a cycle
+
+    snapshot = latest_snapshot(db, project_id)  # raises NoComputedVersion if absent
+    params = _load_params(db, project_id)
+    total_fees = snapshot["summary"]["total_fees"]
+    mc = monte_carlo(params, total_fees=total_fees, n=5000, seed=project_id)
+    return {"risk": mc, "version_no": snapshot.get("version_no")}
 
 
 def _journal(db: Session, project_id: int) -> dict:

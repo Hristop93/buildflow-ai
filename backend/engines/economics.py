@@ -122,11 +122,13 @@ def monte_carlo(params, *, total_fees, n=5000, sigmas=None, seed=None):
         p["ppa_price"] = max(0, params["ppa_price"] + rng.gauss(0, sg["ppa_price"]))
         p["yield_kwh_kwp"] = max(0, params["yield_kwh_kwp"] + rng.gauss(0, sg["yield_kwh_kwp"]))
         scap = max(0, params["specific_capex_per_kw"] + rng.gauss(0, sg["specific_capex_per_kw"]))
+        # Schedule risk is one-sided: projects slip late, not early (SPEC 4.4 link).
+        shift = abs(rng.gauss(0, sg["delay_months"])) * 30 / 365.0
         kw = p["power_mw"] * 1000
         capex = kw * scap + total_fees
         mm = annual_model(p, capex)
-        irr = _irr([-capex] + mm["fcf"])
-        npv = -capex + _npv(p["wacc"], mm["fcf"])
+        irr = _irr([-capex] + mm["fcf"], shift)
+        npv = -capex + _npv(p["wacc"], mm["fcf"], shift)
         irrs.append(irr)
         npvs.append(npv)
         if npv > 0:
@@ -143,11 +145,28 @@ def monte_carlo(params, *, total_fees, n=5000, sigmas=None, seed=None):
         lo, hi = int(i), min(int(i) + 1, len(s) - 1)
         return s[lo] + (s[hi] - s[lo]) * (i - lo)
 
+    def histogram(s, buckets=12):
+        if len(s) < 2 or s[-1] <= s[0]:
+            return []
+        lo_b, width = s[0], (s[-1] - s[0]) / buckets
+        counts = [0] * buckets
+        for x in s:
+            counts[min(int((x - lo_b) / width), buckets - 1)] += 1
+        return [
+            {"irr": round(lo_b + (i + 0.5) * width, 4), "count": c}
+            for i, c in enumerate(counts)
+        ]
+
+    p5 = pct(valid, 0.05)
     return {
         "n": n,
+        "hurdle": hurdle,
         "p_pass": npass / n,
         "irr_p50": pct(valid, 0.5),
-        "irr_p5": pct(valid, 0.05),
+        "irr_p5": p5,
         "irr_p95": pct(valid, 0.95),
         "p_npv_positive": npos / n,
+        # SPEC 4.4: 'resilient' when even the pessimistic P5 clears the hurdle.
+        "resilient": p5 == p5 and p5 >= hurdle,
+        "histogram": histogram(valid),
     }
