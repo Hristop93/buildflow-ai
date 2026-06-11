@@ -103,7 +103,16 @@ def main():
     pid = _new_project(op, "dd")
     _req(op, "POST", f"/projects/{pid}/recalc")
     _check("economics (pro)", _req(op, "GET", f"/projects/{pid}/sections/economics")[0], 200)
-    _check("risk allowed but unbuilt -> 501", _req(op, "GET", f"/projects/{pid}/sections/risk")[0], 501)
+    st, risk = _req(op, "GET", f"/projects/{pid}/sections/risk")
+    _check("risk (dd) -> 200", st, 200)
+    r = risk["data"]["risk"]
+    _check("risk has 5000 scenarios", r["n"], 5000)
+    _check("p_pass in [0,1]", 0.0 <= r["p_pass"] <= 1.0, True)
+    _check("percentiles ordered", r["irr_p5"] <= r["irr_p50"] <= r["irr_p95"], True)
+    _check("histogram has buckets", len(r["histogram"]) > 0, True)
+    # seeded by project id -> stable across calls
+    _, risk2 = _req(op, "GET", f"/projects/{pid}/sections/risk")
+    _check("risk is reproducible", risk2["data"]["risk"]["p_pass"], r["p_pass"])
     _check("export allowed but unbuilt -> 501", _req(op, "GET", f"/projects/{pid}/sections/export")[0], 501)
 
     print("\nSMOKE OK - tier gating enforced across free/standard/pro/dd.")

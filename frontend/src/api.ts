@@ -146,6 +146,18 @@ export interface Economics {
   cashflow: CashflowPoint[]
 }
 
+export interface RiskResult {
+  n: number
+  hurdle: number
+  p_pass: number
+  irr_p50: number
+  irr_p5: number
+  irr_p95: number
+  p_npv_positive: number
+  resilient: boolean
+  histogram: { irr: number; count: number }[]
+}
+
 export interface SectionResponse<T = unknown> {
   section: string
   your_tier: string

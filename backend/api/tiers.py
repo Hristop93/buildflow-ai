@@ -20,9 +20,9 @@ SECTION_TIERS = {
     "export": "dd",
 }
 
-# Sections that actually have data in this phase. risk (Monte Carlo) and export
-# (xlsx/pdf) are defined above for gating but land in later phases (SPEC 9).
-IMPLEMENTED_SECTIONS = {"summary", "route", "fees", "schedule", "economics", "journal"}
+# Sections that actually have data in this phase. export (xlsx/pdf) is defined
+# above for gating but lands in its own phase (SPEC 9).
+IMPLEMENTED_SECTIONS = {"summary", "route", "fees", "schedule", "economics", "journal", "risk"}
 
 
 def is_known_section(name: str) -> bool:

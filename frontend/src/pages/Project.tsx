@@ -4,10 +4,11 @@ import {
   api, ApiError,
   type Project as ProjectT, type SectionResponse,
   type Summary, type RouteStep, type FeeItem, type Economics,
-  type ScheduleData, type NodePatchResult,
+  type ScheduleData, type NodePatchResult, type RiskResult,
 } from '../api'
 import Gantt from '../components/Gantt'
 import CashflowChart from '../components/CashflowChart'
+import RiskHistogram from '../components/RiskHistogram'
 
 const TIER_RANK: Record<string, number> = { free: 0, standard: 1, pro: 2, dd: 3 }
 
@@ -325,6 +326,32 @@ function SectionBody({ name, data }: { name: string; data: Record<string, unknow
             <CashflowChart data={e.cashflow} />
           </div>
         )}
+      </>
+    )
+  }
+
+  if (name === 'risk') {
+    const r = data.risk as RiskResult
+    const pct = (x: number) => (x * 100).toFixed(1) + '%'
+    return (
+      <>
+        <div className={`banner ${r.resilient ? '' : 'risk-warn'}`}>
+          {r.resilient
+            ? `Устойчив проект: дори песимистичният сценарий (P5) минава прага от ${pct(r.hurdle)}.`
+            : `Внимание: песимистичният сценарий (P5 = ${pct(r.irr_p5)}) пада под прага от ${pct(r.hurdle)}.`}
+        </div>
+        <div className="stat-grid">
+          <div className="stat"><div className="v">{pct(r.p_pass)}</div><div className="k">минава прага ({r.n} сценария)</div></div>
+          <div className="stat"><div className="v">{pct(r.p_npv_positive)}</div><div className="k">NPV &gt; 0</div></div>
+          <div className="stat"><div className="v">{pct(r.irr_p50)}</div><div className="k">медиана IRR (P50)</div></div>
+          <div className="stat"><div className="v">{pct(r.irr_p5)}</div><div className="k">песимистичен (P5)</div></div>
+          <div className="stat"><div className="v">{pct(r.irr_p95)}</div><div className="k">оптимистичен (P95)</div></div>
+          <div className="stat"><div className="v" style={{ color: r.resilient ? 'var(--green)' : 'var(--amber)' }}>{r.resilient ? 'устойчив' : 'граничен'}</div><div className="k">оценка на риска</div></div>
+        </div>
+        <div style={{ marginTop: 20 }}>
+          <h2>Разпределение на IRR (Monte Carlo)</h2>
+          <RiskHistogram data={r.histogram} hurdle={r.hurdle} />
+        </div>
       </>
     )
   }
