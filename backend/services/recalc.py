@@ -12,7 +12,7 @@ import json
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
-from backend.db.models.app import Project, ProjectParam, ProjectVersion, Event
+from backend.db.models.app import Project, ProjectParam, ProjectVersion, Event, ProjectNode
 from backend.api.catalog import load_catalog
 from backend.engines.rules import build_active_graph
 from backend.engines.fees import compute_fees
@@ -61,10 +61,27 @@ def run_recalc(db: Session, project_id: int, *, reason: str = "recalc") -> dict:
         graph["active"], params,
         fee_tariffs=catalog.fee_tariffs, acts=catalog.acts,
     )
-    sched = compute_schedule(graph)
+
+    # Per-node duration overrides (set by the schedule editor) feed the CPM;
+    # absent override -> the statutory duration from the catalog.
+    existing_nodes = {
+        n.procedure_id: n
+        for n in db.scalars(
+            select(ProjectNode).where(ProjectNode.project_id == project_id)
+        ).all()
+    }
+    overrides = {
+        pid: n.planned_duration_days
+        for pid, n in existing_nodes.items()
+        if n.planned_duration_days is not None
+    }
+
+    sched = compute_schedule(graph, durations=overrides)
     econ = evaluate(params, total_fees=fee_total)
 
-    result = _assemble(project, graph, fee_items, fee_total, sched, econ)
+    statuses = _sync_nodes(db, project_id, graph, sched, existing_nodes)
+
+    result = _assemble(project, graph, fee_items, fee_total, sched, econ, statuses)
 
     # Persist a new immutable version + audit event.
     next_no = (
@@ -100,7 +117,35 @@ def run_recalc(db: Session, project_id: int, *, reason: str = "recalc") -> dict:
     return result
 
 
-def _assemble(project, graph, fee_items, fee_total, sched, econ) -> dict:
+def _sync_nodes(db: Session, project_id: int, graph, sched, existing_nodes: dict) -> dict:
+    """Upsert the instantiated project_nodes after a recalc: write the computed
+    start/end/critical for every active node (preserving user overrides and
+    status), and mark dropped procedures as excluded. Returns {pid: status}
+    for the active nodes so the snapshot can carry it."""
+    active = graph["active"]
+    nodes = sched["nodes"]
+    statuses = {}
+    for pid in active:
+        n = existing_nodes.get(pid)
+        if n is None:
+            n = ProjectNode(project_id=project_id, procedure_id=pid, status="pending")
+            db.add(n)
+        elif n.status == "excluded":
+            n.status = "pending"  # a rule change re-included it
+        n.computed_start_day = nodes[pid]["start"]
+        n.computed_end_day = nodes[pid]["end"]
+        n.is_critical = nodes[pid]["critical"]
+        statuses[pid] = n.status
+
+    for pid, n in existing_nodes.items():
+        if pid not in active:
+            n.status = "excluded"
+            n.is_critical = False
+
+    return statuses
+
+
+def _assemble(project, graph, fee_items, fee_total, sched, econ, statuses=None) -> dict:
     """Compose the section-shaped payload used by Резюме/Маршрут/Такси/График/Икономика."""
     procs = graph["procedures"]
     institution = graph["institution"]
@@ -119,10 +164,11 @@ def _assemble(project, graph, fee_items, fee_total, sched, econ) -> dict:
             "is_critical": nodes[pid]["critical"],
         })
 
-    # Enrich schedule nodes with the procedure name so the section is
-    # self-sufficient for a Gantt (no need to cross-reference the route).
+    # Enrich schedule nodes with the procedure name and current status so the
+    # section is self-sufficient for the Gantt editor.
+    statuses = statuses or {}
     schedule_nodes = {
-        pid: {**n, "name": procs[pid]["name"]}
+        pid: {**n, "name": procs[pid]["name"], "status": statuses.get(pid, "pending")}
         for pid, n in nodes.items()
     }
 

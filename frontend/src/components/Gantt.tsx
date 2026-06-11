@@ -1,5 +1,6 @@
 // Lightweight SVG Gantt for the schedule section. Bars are positioned along a
 // day axis; the critical path is drawn in red (SPEC 5.2). No chart library.
+// Rows are clickable when onSelect is provided (the schedule editor).
 
 export interface GanttNode {
   start: number
@@ -18,9 +19,13 @@ const PAD = 12
 export default function Gantt({
   nodes,
   totalDays,
+  selected,
+  onSelect,
 }: {
   nodes: Record<string, GanttNode>
   totalDays: number
+  selected?: string | null
+  onSelect?: (id: string) => void
 }) {
   const rows = Object.entries(nodes)
     .map(([id, n]) => ({ id, ...n }))
@@ -50,8 +55,16 @@ export default function Gantt({
         const x = dayX(r.start)
         const w = Math.max(2, dayX(r.end) - x)
         const label = r.name ?? r.id
+        const isSel = selected === r.id
         return (
-          <g key={r.id}>
+          <g
+            key={r.id}
+            onClick={onSelect ? () => onSelect(r.id) : undefined}
+            style={onSelect ? { cursor: 'pointer' } : undefined}
+          >
+            {isSel && (
+              <rect x={0} y={y} width={width - PAD} height={ROW_H} fill="var(--amber-soft)" rx={4} />
+            )}
             <text x={0} y={y + ROW_H / 2 + 4} fontSize="12" fill="var(--text)">
               {label.length > 30 ? label.slice(0, 29) + '…' : label}
             </text>
@@ -62,6 +75,8 @@ export default function Gantt({
               height={BAR_H}
               rx={3}
               fill={r.critical ? 'var(--red)' : 'var(--navy)'}
+              stroke={isSel ? 'var(--amber)' : 'none'}
+              strokeWidth={isSel ? 2 : 0}
             >
               <title>{`${label}: ден ${r.start}–${r.end}${r.critical ? ' (критичен)' : ''}`}</title>
             </rect>

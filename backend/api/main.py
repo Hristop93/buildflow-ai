@@ -12,14 +12,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.base import get_db
-from backend.db.models.app import User, Project, ProjectParam, ProjectVersion
-from backend.db.models.core import ProjectType
+from backend.db.models.app import User, Project, ProjectParam, ProjectVersion, ProjectNode, Event
+from backend.db.models.core import ProjectType, Procedure
 from backend.api import schemas, tiers
 from backend.api.auth import router as auth_router
 from backend.api.admin import router as admin_router
 from backend.api.deps import get_current_user, owned_project_or_404
 from backend.services.recalc import run_recalc
-from backend.services.sections import build_section, NoComputedVersion
+from backend.services.sections import build_section, latest_snapshot, NoComputedVersion
 
 app = FastAPI(title="Buildflow AI", version="0.1.0")
 app.include_router(auth_router)
@@ -101,6 +101,90 @@ def recalc(
 ):
     owned_project_or_404(db, project_id, user)
     return run_recalc(db, project_id)
+
+
+NODE_STATUSES = {"pending", "active", "done", "delayed"}
+
+
+@app.patch("/projects/{project_id}/nodes/{procedure_id}")
+def patch_node(
+    project_id: int,
+    procedure_id: str,
+    payload: schemas.NodePatch,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Edit one schedule node (duration override and/or status), then recalc.
+    Returns the fresh result plus the delta against the previous version so the
+    client can show "the change moved the deadline by +X days" (SPEC 5.2)."""
+    project = owned_project_or_404(db, project_id, user)
+
+    # Editing the schedule is a pro capability, same as reading it (SPEC 6).
+    if not tiers.can_access(project.tier, "schedule"):
+        raise HTTPException(403, {
+            "error": "section_locked",
+            "section": "schedule",
+            "your_tier": project.tier,
+            "required_tier": tiers.required_tier("schedule"),
+        })
+    if db.get(Procedure, procedure_id) is None:
+        raise HTTPException(404, f"unknown procedure: {procedure_id}")
+    if payload.status is not None and payload.status not in NODE_STATUSES:
+        raise HTTPException(400, f"status must be one of {sorted(NODE_STATUSES)}")
+    if payload.status == "delayed" and not (payload.reason and payload.reason.strip()):
+        raise HTTPException(400, "reason is required when marking a node as delayed")
+
+    changes: dict = {}
+    if "planned_duration_days" in payload.model_fields_set:
+        changes["planned_duration_days"] = payload.planned_duration_days
+    if payload.status is not None:
+        changes["status"] = payload.status
+    if not changes:
+        raise HTTPException(400, "nothing to change")
+
+    node = db.scalar(
+        select(ProjectNode).where(
+            ProjectNode.project_id == project_id,
+            ProjectNode.procedure_id == procedure_id,
+        )
+    )
+    if node is None:
+        node = ProjectNode(project_id=project_id, procedure_id=procedure_id, status="pending")
+        db.add(node)
+        db.flush()
+
+    if "planned_duration_days" in changes:
+        node.planned_duration_days = changes["planned_duration_days"]
+    if "status" in changes:
+        node.status = changes["status"]
+
+    # Previous totals -> delta for the "change moved the deadline" banner.
+    try:
+        prev = latest_snapshot(db, project_id)
+        prev_days = prev["summary"]["total_days"]
+        prev_irr = prev["economics"]["irr"]
+    except NoComputedVersion:
+        prev_days = None
+        prev_irr = None
+
+    db.add(Event(
+        project_id=project_id,
+        node_id=node.id,
+        event_type="node_changed",
+        payload={"procedure_id": procedure_id, **changes, "reason": payload.reason},
+        created_by=user.id,
+    ))
+
+    result = run_recalc(db, project_id, reason=f"node edit: {procedure_id}")
+
+    new_days = result["summary"]["total_days"]
+    new_irr = result["economics"]["irr"]
+    return {
+        "version_no": result["version_no"],
+        "delta_days": (new_days - prev_days) if prev_days is not None else None,
+        "delta_irr_pp": round((new_irr - prev_irr) * 100, 2) if prev_irr is not None else None,
+        "result": result,
+    }
 
 
 @app.get("/projects/{project_id}/versions", response_model=list[schemas.VersionOut])

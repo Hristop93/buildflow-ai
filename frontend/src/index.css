@@ -72,6 +72,7 @@ button.link:hover { background: none; text-decoration: underline; }
 .spread { display: flex; justify-content: space-between; align-items: center; }
 .muted { color: var(--muted); }
 .error { background: #fdecea; color: var(--red); padding: 10px 12px; border-radius: 8px; font-size: 14px; margin: 12px 0; }
+.banner { background: var(--amber-soft); color: var(--amber); padding: 10px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; margin: 12px 0; }
 .checkbox { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; }
 .checkbox input { width: auto; margin-top: 3px; }
 
