@@ -12,7 +12,7 @@ export default function TopBar() {
 
   return (
     <div className="topbar">
-      <Link to="/" className="brand">Buildflow<span> AI</span></Link>
+      <Link to="/" className="brand"><span className="mark">B</span>Buildflow<span> AI</span></Link>
       <div className="right">
         <span className="muted" style={{ color: '#cdd7e3' }}>{user?.email}</span>
         <button className="link" style={{ color: '#fff' }} onClick={onLogout}>Изход</button>

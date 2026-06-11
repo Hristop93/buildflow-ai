@@ -30,6 +30,7 @@ export default function Login() {
   return (
     <div className="center-screen">
       <form className="card auth-card" onSubmit={onSubmit}>
+        <div className="auth-brand"><span className="mark">B</span>Buildflow<span>&nbsp;AI</span></div>
         <h1>Вход</h1>
         {error && <div className="error">{error}</div>}
         <label>Имейл</label>
