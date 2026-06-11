@@ -8,6 +8,14 @@ Values are REPRESENTATIVE and must be verified against current acts per municipa
 (see SPEC.md, Phase 0). Structure is final; numbers are placeholders for real data.
 """
 
+# --- Municipalities (SPEC 10: launch with Варна + 2) --------------------------
+# coverage_status: 'verified' (тарифите сверени) | 'partial' | 'none'
+MUNICIPALITIES = [
+    {"name": "Варна", "region": "Варна", "coverage_status": "verified", "verified_at": "2026-06-01"},
+    {"name": "Бургас", "region": "Бургас", "coverage_status": "partial", "verified_at": None},
+    {"name": "Пловдив", "region": "Пловдив", "coverage_status": "none", "verified_at": None},
+]
+
 # --- Institutions -----------------------------------------------------------
 INSTITUTIONS = [
     {"id": "INST-01", "name": "Главен архитект / Община (ЕСУТ)", "type": "общинска"},

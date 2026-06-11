@@ -1,6 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, ApiError, type Project } from '../api'
+import { api, ApiError, type Project, type Municipality } from '../api'
+
+const COVERAGE_BADGE: Record<Municipality['coverage_status'], string> = {
+  verified: '✔ сверена',
+  partial: '⚠ частична',
+  none: '✖ няма данни',
+}
 
 const STEPS = ['Тип и ниво', 'Локация', 'Технически', 'Финансови']
 
@@ -21,6 +27,8 @@ export default function Wizard() {
 
   const [name, setName] = useState('')
   const [tier, setTier] = useState('pro')
+  const [municipalities, setMunicipalities] = useState<Municipality[]>([])
+  const [municipalityId, setMunicipalityId] = useState('')
   const [landStatus, setLandStatus] = useState('agricultural')
   const [voltage, setVoltage] = useState('medium')
   const [protectedZone, setProtectedZone] = useState(false)
@@ -33,7 +41,14 @@ export default function Wizard() {
   const [wacc, setWacc] = useState('8')
   const [hurdle, setHurdle] = useState('9')
 
-  const canNext = step === 0 ? name.trim().length > 0 : true
+  useEffect(() => {
+    api.get<Municipality[]>('/catalog/municipalities').then(setMunicipalities).catch(() => {})
+  }, [])
+
+  const canNext =
+    step === 0 ? name.trim().length > 0 :
+    step === 1 ? municipalityId !== '' :
+    true
 
   const submit = async () => {
     setError('')
@@ -56,6 +71,7 @@ export default function Wizard() {
       const project = await api.post<Project>('/projects', {
         name: name.trim(),
         project_type_id: 'pv_ground',
+        municipality_id: municipalityId ? Number(municipalityId) : null,
         tier,
         params,
       })
@@ -102,6 +118,18 @@ export default function Wizard() {
 
         {step === 1 && (
           <>
+            <label>Община *</label>
+            <select value={municipalityId} onChange={(e) => setMunicipalityId(e.target.value)} autoFocus>
+              <option value="" disabled>— избери община —</option>
+              {municipalities.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {COVERAGE_BADGE[m.coverage_status]} · {m.name}
+                </option>
+              ))}
+            </select>
+            <p className="muted" style={{ fontSize: 13 }}>
+              ✔ сверена = таксите са проверени към актуалните актове · ⚠/✖ — представителни стойности.
+            </p>
             <label>Статут на земята</label>
             <select value={landStatus} onChange={(e) => setLandStatus(e.target.value)}>
               <option value="agricultural">Земеделска</option>

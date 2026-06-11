@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.base import get_db
 from backend.db.models.app import User, Project, ProjectParam, ProjectVersion, ProjectNode, Event
-from backend.db.models.core import ProjectType, Procedure
+from backend.db.models.core import ProjectType, Procedure, Municipality
 from backend.api import schemas, tiers
 from backend.api.auth import router as auth_router
 from backend.api.admin import router as admin_router
@@ -40,6 +40,13 @@ def project_types(db: Session = Depends(get_db)):
     ]
 
 
+@app.get("/catalog/municipalities", response_model=list[schemas.MunicipalityOut])
+def municipalities(db: Session = Depends(get_db)):
+    """Coverage status is shown honestly in the wizard (SPEC 5.2):
+    verified = tariffs checked, partial = incomplete, none = no local data."""
+    return db.scalars(select(Municipality).order_by(Municipality.name)).all()
+
+
 # --- Projects (owner-scoped) -------------------------------------------------
 @app.post("/projects", response_model=schemas.ProjectOut, status_code=201)
 def create_project(
@@ -49,6 +56,8 @@ def create_project(
 ):
     if db.get(ProjectType, payload.project_type_id) is None:
         raise HTTPException(400, f"unknown project_type_id: {payload.project_type_id}")
+    if payload.municipality_id is not None and db.get(Municipality, payload.municipality_id) is None:
+        raise HTTPException(400, f"unknown municipality_id: {payload.municipality_id}")
 
     project = Project(
         user_id=user.id,
