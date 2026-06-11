@@ -3,9 +3,10 @@ import { useParams } from 'react-router-dom'
 import {
   api, ApiError,
   type Project as ProjectT, type SectionResponse,
-  type Summary, type RouteStep, type FeeItem,
+  type Summary, type RouteStep, type FeeItem, type Economics,
 } from '../api'
 import Gantt, { type GanttNode } from '../components/Gantt'
+import CashflowChart from '../components/CashflowChart'
 
 const TIER_RANK: Record<string, number> = { free: 0, standard: 1, pro: 2, dd: 3 }
 
@@ -190,17 +191,25 @@ function SectionBody({ name, data }: { name: string; data: Record<string, unknow
   }
 
   if (name === 'economics') {
-    const e = data.economics as Record<string, number | string>
+    const e = data.economics as Economics
     const pct = (x: number) => (x * 100).toFixed(1) + '%'
     return (
-      <div className="stat-grid">
-        <div className="stat"><div className="v">{money(e.capex as number)}</div><div className="k">CAPEX</div></div>
-        <div className="stat"><div className="v">{pct(e.irr as number)}</div><div className="k">IRR</div></div>
-        <div className="stat"><div className="v">{money(e.npv as number)}</div><div className="k">NPV</div></div>
-        <div className="stat"><div className="v">{(e.lcoe as number).toFixed(1)}</div><div className="k">LCOE (лв/MWh)</div></div>
-        <div className="stat"><div className="v">{(e.payback_years as number).toFixed(1)}</div><div className="k">изплащане (год)</div></div>
-        <div className="stat"><div className="v" style={{ textTransform: 'capitalize' }}>{e.verdict}</div><div className="k">присъда</div></div>
-      </div>
+      <>
+        <div className="stat-grid">
+          <div className="stat"><div className="v">{money(e.capex)}</div><div className="k">CAPEX</div></div>
+          <div className="stat"><div className="v">{pct(e.irr)}</div><div className="k">IRR</div></div>
+          <div className="stat"><div className="v">{money(e.npv)}</div><div className="k">NPV</div></div>
+          <div className="stat"><div className="v">{e.lcoe.toFixed(1)}</div><div className="k">LCOE (лв/MWh)</div></div>
+          <div className="stat"><div className="v">{e.payback_years.toFixed(1)}</div><div className="k">изплащане (год)</div></div>
+          <div className="stat"><div className="v" style={{ textTransform: 'capitalize' }}>{e.verdict}</div><div className="k">присъда</div></div>
+        </div>
+        {e.cashflow && (
+          <div style={{ marginTop: 20 }}>
+            <h2>Паричен поток (20 г.)</h2>
+            <CashflowChart data={e.cashflow} />
+          </div>
+        )}
+      </>
     )
   }
 

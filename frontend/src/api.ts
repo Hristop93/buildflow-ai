@@ -99,6 +99,22 @@ export interface RecalcResult {
   fees: { items: FeeItem[]; total: number }
 }
 
+export interface CashflowPoint {
+  year: number
+  fcf: number
+  cumulative: number
+}
+
+export interface Economics {
+  capex: number
+  irr: number
+  npv: number
+  lcoe: number
+  payback_years: number
+  verdict: string
+  cashflow: CashflowPoint[]
+}
+
 export interface SectionResponse<T = unknown> {
   section: string
   your_tier: string

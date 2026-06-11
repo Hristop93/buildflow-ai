@@ -75,6 +75,14 @@ def evaluate(params, *, total_fees, p5_irr=None):
     else:
         verdict = "risky"
 
+    # Yearly cash position: year 0 is the upfront CAPEX, then free cash flow
+    # accumulates. The cumulative line crosses zero at the payback point.
+    cashflow = [{"year": 0, "fcf": -capex, "cumulative": -capex}]
+    cum = -capex
+    for t, f in enumerate(m["fcf"], start=1):
+        cum += f
+        cashflow.append({"year": t, "fcf": f, "cumulative": cum})
+
     return {
         "capex": capex,
         "irr": irr,
@@ -82,6 +90,7 @@ def evaluate(params, *, total_fees, p5_irr=None):
         "lcoe": lcoe,
         "payback_years": payback,
         "verdict": verdict,
+        "cashflow": cashflow,
     }
 
 
