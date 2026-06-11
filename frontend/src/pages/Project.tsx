@@ -5,6 +5,7 @@ import {
   type Project as ProjectT, type SectionResponse,
   type Summary, type RouteStep, type FeeItem,
 } from '../api'
+import Gantt, { type GanttNode } from '../components/Gantt'
 
 const TIER_RANK: Record<string, number> = { free: 0, standard: 1, pro: 2, dd: 3 }
 
@@ -179,22 +180,11 @@ function SectionBody({ name, data }: { name: string; data: Record<string, unknow
   }
 
   if (name === 'schedule') {
-    const sch = data.schedule as { nodes: Record<string, { start: number; end: number; critical: boolean }>; total_days: number }
-    const rows = Object.entries(sch.nodes).sort((a, b) => a[1].start - b[1].start)
+    const sch = data.schedule as { nodes: Record<string, GanttNode>; total_days: number }
     return (
       <>
-        <p>Общ срок: <strong>{sch.total_days}</strong> дни</p>
-        <table>
-          <thead><tr><th>Възел</th><th className="num">Старт</th><th className="num">Край</th><th>Критичен</th></tr></thead>
-          <tbody>
-            {rows.map(([pid, n]) => (
-              <tr key={pid}>
-                <td>{pid}</td><td className="num">{n.start}</td><td className="num">{n.end}</td>
-                <td>{n.critical ? <span className="tag-critical">да</span> : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <p>Общ срок: <strong>{sch.total_days}</strong> дни · <span className="tag-critical">червено = критичен път</span></p>
+        <Gantt nodes={sch.nodes} totalDays={sch.total_days} />
       </>
     )
   }
