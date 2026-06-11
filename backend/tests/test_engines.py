@@ -68,6 +68,28 @@ def test_economics_match_excel():
     assert e["verdict"] == "relevant"
 
 
+def test_zero_delay_matches_etalon_exactly():
+    g = _graph()
+    _, total = compute_fees(g["active"], P, fee_tariffs=seed.FEE_TARIFFS, acts=seed.ACTS)
+    base = evaluate(P, total_fees=total)
+    shifted = evaluate(P, total_fees=total, delay_days=0)
+    assert shifted["irr"] == base["irr"]
+    assert shifted["npv"] == base["npv"]
+    assert shifted["lcoe"] == base["lcoe"]
+
+
+def test_delay_lowers_irr_and_npv():
+    g = _graph()
+    _, total = compute_fees(g["active"], P, fee_tariffs=seed.FEE_TARIFFS, acts=seed.ACTS)
+    base = evaluate(P, total_fees=total)
+    delayed = evaluate(P, total_fees=total, delay_days=30)
+    assert delayed["irr"] < base["irr"], (delayed["irr"], base["irr"])
+    assert delayed["npv"] < base["npv"], (delayed["npv"], base["npv"])
+    # a 30-day slip should dent IRR, not demolish it (sanity bound: < 1 п.п.)
+    assert base["irr"] - delayed["irr"] < 0.01, base["irr"] - delayed["irr"]
+    assert delayed["payback_years"] > base["payback_years"]
+
+
 def test_monte_carlo_runs():
     g = _graph()
     _, total = compute_fees(g["active"], P, fee_tariffs=seed.FEE_TARIFFS, acts=seed.ACTS)

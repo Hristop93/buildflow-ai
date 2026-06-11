@@ -77,7 +77,17 @@ def run_recalc(db: Session, project_id: int, *, reason: str = "recalc") -> dict:
     }
 
     sched = compute_schedule(graph, durations=overrides)
-    econ = evaluate(params, total_fees=fee_total)
+
+    # SPEC 4.4: only the DEVIATION from the statutory schedule shifts the
+    # cashflows (the etalon prices the statutory baseline in). No overrides
+    # means delay 0 — skip the second CPM pass.
+    if overrides:
+        statutory_total = compute_schedule(graph)["total_days"]
+        delay_days = sched["total_days"] - statutory_total
+    else:
+        delay_days = 0
+
+    econ = evaluate(params, total_fees=fee_total, delay_days=delay_days)
 
     statuses = _sync_nodes(db, project_id, graph, sched, existing_nodes)
 
