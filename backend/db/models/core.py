@@ -69,6 +69,8 @@ class Procedure(Base):
     statutory_term_days = Column(Integer, nullable=True)
     act_id = Column(String, ForeignKey("core.normative_acts.id"), nullable=True)
     note = Column(Text, nullable=True)
+    # None = national; set = a step required only in this municipality.
+    municipality_id = Column(Integer, ForeignKey("core.municipalities.id"), nullable=True)
 
 
 class ProcedureInput(Base):
@@ -86,6 +88,8 @@ class Dependency(Base):
     successor_id = Column(String, ForeignKey("core.procedures.id"), primary_key=True)
     predecessor_id = Column(String, ForeignKey("core.procedures.id"), primary_key=True)
     link_type = Column(String, default="finish_start")
+    # None = national edge; set = applies only in this municipality.
+    municipality_id = Column(Integer, ForeignKey("core.municipalities.id"), nullable=True)
 
 
 class FeeTariff(Base):
@@ -115,6 +119,8 @@ class Rule(Base):
     target_procedure_id = Column(String, ForeignKey("core.procedures.id"), nullable=True)
     target_institution_id = Column(String, ForeignKey("core.institutions.id"), nullable=True)
     explanation = Column(Text, nullable=True)
+    # None = national rule; set = applies only to projects in this municipality.
+    municipality_id = Column(Integer, ForeignKey("core.municipalities.id"), nullable=True)
 
 
 class ProjectType(Base):

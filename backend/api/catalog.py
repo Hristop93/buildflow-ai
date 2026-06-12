@@ -41,7 +41,14 @@ def _coerce(value: str):
         return value
 
 
-def load_catalog(db: Session) -> Catalog:
+def load_catalog(db: Session, municipality_id: int | None = None) -> Catalog:
+    """The graph is layered: national rows (municipality_id IS NULL) always
+    apply; a municipality's own procedures/rules/edges apply only to projects
+    in that municipality (SPEC 3.1). So a municipality can require a different
+    set of steps, not just different fees."""
+    def _scope(model):
+        return or_(model.municipality_id.is_(None), model.municipality_id == municipality_id)
+
     procedures = [
         {
             "id": p.id,
@@ -50,11 +57,11 @@ def load_catalog(db: Session) -> Catalog:
             "duration_days": p.statutory_term_days,
             "act": p.act_id,
         }
-        for p in db.scalars(select(Procedure)).all()
+        for p in db.scalars(select(Procedure).where(_scope(Procedure))).all()
     ]
 
     dependencies: dict[str, list[str]] = {}
-    for d in db.scalars(select(Dependency)).all():
+    for d in db.scalars(select(Dependency).where(_scope(Dependency))).all():
         dependencies.setdefault(d.successor_id, []).append(d.predecessor_id)
 
     rules = [
@@ -67,7 +74,7 @@ def load_catalog(db: Session) -> Catalog:
             "target": r.target_procedure_id,
             "target_institution": r.target_institution_id,
         }
-        for r in db.scalars(select(Rule)).all()
+        for r in db.scalars(select(Rule).where(_scope(Rule))).all()
     ]
 
     # Only tariffs in force today (SPEC 4.2): valid_from <= today < valid_to.
