@@ -36,6 +36,28 @@ def test_rules_exclude_for_urban_land():
     assert "PRO-05" not in g["active"]   # промяна на предназначение отпада
 
 
+def test_protected_zone_adds_full_ovos():
+    p = dict(P, protected_zone=True)
+    g = build_active_graph(p, procedures=seed.PROCEDURES, dependencies=seed.DEPENDENCIES,
+                           rules=seed.RULES, project_types=seed.PROJECT_TYPES)
+    assert "PRO-14" in g["active"], g["active"]
+    assert len(g["active"]) == 14
+    # the full assessment gates the permit and extends the critical path
+    sched = compute_schedule(g)
+    assert sched["total_days"] > 420, sched["total_days"]
+    # and its fee is now counted
+    _, total = compute_fees(g["active"], p, fee_tariffs=seed.FEE_TARIFFS, acts=seed.ACTS)
+    assert round(total) == 39870 + 1500, total
+
+
+def test_compound_rule_requires_all_conditions():
+    # protected zone but tiny plant: the power condition fails -> no full ОВОС
+    p = dict(P, protected_zone=True, power_mw=0.5)
+    g = build_active_graph(p, procedures=seed.PROCEDURES, dependencies=seed.DEPENDENCIES,
+                           rules=seed.RULES, project_types=seed.PROJECT_TYPES)
+    assert "PRO-14" not in g["active"], g["active"]
+
+
 def test_critical_path_420():
     g = _graph()
     sched = compute_schedule(g)

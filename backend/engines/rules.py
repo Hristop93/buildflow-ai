@@ -24,6 +24,21 @@ def _cmp(op: str, left, right) -> bool:
     raise ValueError(f"unknown operator {op!r}")
 
 
+def _matches(rule: dict, params: dict) -> bool:
+    """A rule fires when its condition(s) hold. Compound form: `conditions` is
+    a list of {param, op, value} that must ALL hold (AND); express OR as two
+    rules. Legacy form: the single param/op/value triple."""
+    conds = rule.get("conditions")
+    if conds:
+        for c in conds:
+            pval = params.get(c["param"])
+            if pval is None or not _cmp(c["op"], pval, c["value"]):
+                return False
+        return True
+    pval = params.get(rule["param"])
+    return pval is not None and _cmp(rule["op"], pval, rule["value"])
+
+
 def build_active_graph(params: dict, *, procedures, dependencies, rules, project_types):
     """Return dict with active procedure ids, their institutions, and active edges.
 
@@ -37,10 +52,7 @@ def build_active_graph(params: dict, *, procedures, dependencies, rules, project
     institution = {pid: proc_by_id[pid]["institution"] for pid in base}
 
     for rule in rules:
-        pval = params.get(rule["param"])
-        if pval is None:
-            continue
-        if not _cmp(rule["op"], pval, rule["value"]):
+        if not _matches(rule, params):
             continue
         target = rule["target"]
         action = rule["action"]
