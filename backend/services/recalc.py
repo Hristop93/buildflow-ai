@@ -60,6 +60,7 @@ def run_recalc(db: Session, project_id: int, *, reason: str = "recalc") -> dict:
     fee_items, fee_total = compute_fees(
         graph["active"], params,
         fee_tariffs=catalog.fee_tariffs, acts=catalog.acts,
+        municipality_id=project.municipality_id,
     )
 
     # Per-node duration overrides (set by the schedule editor) feed the CPM;
