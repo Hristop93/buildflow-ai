@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,7 @@ from backend.db.models.core import (
 from backend.api import schemas
 from backend.api.deps import get_current_admin
 from backend.services.monitoring import propagate_tariff_change
+from backend.services.import_csv import import_municipalities, import_tariffs, ImportError_
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_admin)])
 
@@ -480,3 +481,30 @@ def remove_procedure_input(procedure_id: str, document_id: str, db: Session = De
         raise HTTPException(404, "input link not found")
     db.delete(link)
     db.commit()
+
+
+# --- CSV bulk import (SPEC 5.3) ----------------------------------------------
+# Raw CSV in the request body. dry_run=true validates and reports without
+# writing — use it before the real import. All-or-nothing per file.
+@router.post("/import/municipalities")
+def import_municipalities_csv(
+    dry_run: bool = False,
+    body: bytes = Body(..., media_type="text/csv"),
+    db: Session = Depends(get_db),
+):
+    try:
+        return import_municipalities(db, body.decode("utf-8-sig"), dry_run=dry_run)
+    except ImportError_ as e:
+        raise HTTPException(422, {"errors": e.errors})
+
+
+@router.post("/import/tariffs")
+def import_tariffs_csv(
+    dry_run: bool = False,
+    body: bytes = Body(..., media_type="text/csv"),
+    db: Session = Depends(get_db),
+):
+    try:
+        return import_tariffs(db, body.decode("utf-8-sig"), dry_run=dry_run)
+    except ImportError_ as e:
+        raise HTTPException(422, {"errors": e.errors})
