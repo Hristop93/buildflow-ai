@@ -85,6 +85,7 @@ def load_catalog(db: Session) -> Catalog:
             "basis": t.basis,
             "rate": t.rate,
             "act": t.act_id,
+            "municipality": t.municipality_id,  # None = national
         }
         for t in db.scalars(in_force).all()
     ]

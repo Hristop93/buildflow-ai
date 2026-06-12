@@ -48,6 +48,24 @@ def test_fees_total_39870():
     assert round(total) == 39870, total
 
 
+def test_municipal_tariff_overrides_national():
+    g = _graph()
+    varna = {"id": "FEE-VAR", "procedure": "PRO-09", "desc": "Варна разрешение",
+             "basis": "per_sqm_rzp", "rate": 2.0, "act": "ACT-04", "municipality": 1}
+    tariffs = seed.FEE_TARIFFS + [varna]
+
+    # National project: the Варна tariff is ignored, total stays the etalon.
+    _, national = compute_fees(g["active"], P, fee_tariffs=tariffs, acts=seed.ACTS)
+    assert round(national) == 39870, national
+
+    # Project in municipality 1: PRO-09 uses the Варна rate (2.0), NOT both.
+    items, total = compute_fees(g["active"], P, fee_tariffs=tariffs, acts=seed.ACTS, municipality_id=1)
+    pro09 = [i for i in items if i["procedure"] == "PRO-09"]
+    assert len(pro09) == 1, pro09                     # no double-count
+    assert pro09[0]["fee_id"] == "FEE-VAR", pro09[0]
+    assert round(total) == 39870 + 250, total          # +250 = (2.0-1.5)*500
+
+
 def test_fees_carry_citations():
     g = _graph()
     items, _ = compute_fees(g["active"], P, fee_tariffs=seed.FEE_TARIFFS, acts=seed.ACTS)
