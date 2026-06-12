@@ -7,7 +7,7 @@ reports keep citing the exact row that was in force when they were computed.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.base import get_db
-from backend.db.models.app import User
+from backend.db.models.app import User, Project, ValidationRequest
 from backend.db.models.core import NormativeAct, FeeTariff, Procedure, Municipality
 from backend.api import schemas
 from backend.api.deps import get_current_admin
@@ -24,6 +24,7 @@ router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_cu
 
 ALLOWED_BASES = {"fixed", "per_sqm_rzp", "pct_of_value", "per_mw"}
 ALLOWED_LEVELS = {"state", "municipal"}
+REVIEW_STATUSES = {"in_review", "approved", "rejected"}
 
 
 def _new_id(prefix: str) -> str:
@@ -190,3 +191,51 @@ def revise_tariff(tariff_id: str, payload: schemas.TariffRevise, db: Session = D
     db.commit()
     db.refresh(new)
     return new
+
+
+# --- Validation queue --------------------------------------------------------
+@router.get("/validation-queue", response_model=list[schemas.ValidationQueueItem])
+def validation_queue(status: str | None = None, db: Session = Depends(get_db)):
+    stmt = (
+        select(ValidationRequest, Project.name, User.email)
+        .join(Project, Project.id == ValidationRequest.project_id)
+        .join(User, User.id == ValidationRequest.user_id)
+        .order_by(ValidationRequest.created_at.desc())
+    )
+    if status is not None:
+        stmt = stmt.where(ValidationRequest.status == status)
+
+    items = []
+    for req, project_name, requester_email in db.execute(stmt).all():
+        base = schemas.ValidationRequestOut.model_validate(req).model_dump()
+        items.append(schemas.ValidationQueueItem(
+            **base, project_name=project_name, requester_email=requester_email,
+        ))
+    return items
+
+
+@router.patch("/validation-queue/{request_id}", response_model=schemas.ValidationRequestOut)
+def review_validation(
+    request_id: int,
+    payload: schemas.ValidationReview,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    if payload.status not in REVIEW_STATUSES:
+        raise HTTPException(400, f"status must be one of {sorted(REVIEW_STATUSES)}")
+    req = db.get(ValidationRequest, request_id)
+    if req is None:
+        raise HTTPException(404, "validation request not found")
+    if req.status in ("approved", "rejected"):
+        raise HTTPException(409, "this request is already closed")
+
+    req.status = payload.status
+    if payload.review_note is not None:
+        req.review_note = payload.review_note
+    if payload.certified_pdf_url is not None:
+        req.certified_pdf_url = payload.certified_pdf_url
+    req.reviewed_at = datetime.now(timezone.utc)
+    req.reviewed_by = admin.id
+    db.commit()
+    db.refresh(req)
+    return req

@@ -5,6 +5,7 @@ import {
   type Project as ProjectT, type SectionResponse,
   type Summary, type RouteStep, type FeeItem, type Economics,
   type ScheduleData, type NodePatchResult, type RiskResult,
+  type ValidationRequest,
 } from '../api'
 import Gantt from '../components/Gantt'
 import CashflowChart from '../components/CashflowChart'
@@ -252,17 +253,71 @@ function ScheduleSection({
   )
 }
 
+const VALIDATION_LABELS: Record<ValidationRequest['status'], string> = {
+  requested: 'Заявена — чака преглед',
+  in_review: 'В преглед от експерт',
+  approved: 'Заверена ✔',
+  rejected: 'Отхвърлена',
+}
+
 function ExportSection({ projectId }: { projectId: string }) {
   const today = new Date().toLocaleDateString('bg-BG')
+  const [validation, setValidation] = useState<ValidationRequest | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    api.get<ValidationRequest | null>(`/projects/${projectId}/validation`).then(setValidation).catch(() => {})
+  }, [projectId])
+
+  const requestValidation = async () => {
+    setBusy(true)
+    setErr('')
+    try {
+      setValidation(await api.post<ValidationRequest>(`/projects/${projectId}/validation`, {}))
+    } catch (e) {
+      setErr(e instanceof ApiError && e.status === 409 ? 'Вече има подадена заявка.' : 'Грешка при заявката')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const pending = validation && (validation.status === 'requested' || validation.status === 'in_review')
+
   return (
-    <div style={{ textAlign: 'center', padding: '24px 12px' }}>
-      <p>Excel пакет с всички секции (Резюме, Маршрут, Такси, График, Икономика).</p>
-      <a href={`/projects/${projectId}/export/xlsx`} download>
-        <button className="amber" type="button">⬇ Изтегли Excel</button>
-      </a>
-      <p className="muted" style={{ marginTop: 16, fontSize: 13 }}>
-        Докладът се генерира от последното изчисление и носи печат „изчислено по актове в сила към {today}“.
-      </p>
+    <div style={{ padding: '12px' }}>
+      <div style={{ textAlign: 'center' }}>
+        <p>Excel пакет с всички секции (Резюме, Маршрут, Такси, График, Икономика).</p>
+        <a href={`/projects/${projectId}/export/xlsx`} download>
+          <button className="amber" type="button">⬇ Изтегли Excel</button>
+        </a>
+        <p className="muted" style={{ marginTop: 16, fontSize: 13 }}>
+          Докладът се генерира от последното изчисление и носи печат „изчислено по актове в сила към {today}“.
+        </p>
+      </div>
+
+      <div className="card" style={{ marginTop: 16, background: 'var(--bg)' }}>
+        <h2>Експертна валидация</h2>
+        {err && <div className="error">{err}</div>}
+        {!validation && (
+          <>
+            <p className="muted">Заяви преглед от експерт, който при одобрение прикача заверен PDF.</p>
+            <button onClick={requestValidation} disabled={busy}>
+              {busy ? 'Изпращане…' : 'Заяви експертна валидация'}
+            </button>
+          </>
+        )}
+        {validation && (
+          <p>
+            Статус: <strong>{VALIDATION_LABELS[validation.status]}</strong>
+            {validation.review_note && <span className="muted"> — {validation.review_note}</span>}
+            {validation.certified_pdf_url && (
+              <> · <a href={validation.certified_pdf_url} target="_blank" rel="noreferrer">заверен PDF</a></>
+            )}
+            {pending && <span className="muted"> · можеш да изтеглиш Excel-а междувременно</span>}
+          </p>
+        )}
+      </div>
     </div>
   )
 }

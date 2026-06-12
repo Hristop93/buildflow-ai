@@ -12,7 +12,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.db.base import get_db
-from backend.db.models.app import User, Project, ProjectParam, ProjectVersion, ProjectNode, Event
+from backend.db.models.app import (
+    User, Project, ProjectParam, ProjectVersion, ProjectNode, Event, ValidationRequest,
+)
 from backend.db.models.core import ProjectType, Procedure, Municipality
 from backend.api import schemas, tiers
 from backend.api.auth import router as auth_router
@@ -209,6 +211,59 @@ def list_versions(
         .where(ProjectVersion.project_id == project_id)
         .order_by(ProjectVersion.version_no.desc())
     ).all()
+
+
+PENDING_VALIDATION = ("requested", "in_review")
+
+
+@app.post("/projects/{project_id}/validation", response_model=schemas.ValidationRequestOut, status_code=201)
+def request_validation(
+    project_id: int,
+    payload: schemas.ValidationRequestIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """A dd user requests expert validation of the project (SPEC 5.2)."""
+    project = owned_project_or_404(db, project_id, user)
+    if not tiers.can_access(project.tier, "export"):  # export == dd
+        raise HTTPException(403, {
+            "error": "tier_required", "required_tier": "dd", "your_tier": project.tier,
+        })
+    existing = db.scalar(
+        select(ValidationRequest)
+        .where(ValidationRequest.project_id == project_id)
+        .where(ValidationRequest.status.in_(PENDING_VALIDATION))
+    )
+    if existing is not None:
+        raise HTTPException(409, "a validation request is already pending for this project")
+
+    req = ValidationRequest(
+        project_id=project_id, user_id=user.id,
+        status="requested", note=payload.note,
+    )
+    db.add(req)
+    db.add(Event(
+        project_id=project_id, event_type="validation_requested",
+        payload={"note": payload.note}, created_by=user.id,
+    ))
+    db.commit()
+    db.refresh(req)
+    return req
+
+
+@app.get("/projects/{project_id}/validation", response_model=schemas.ValidationRequestOut | None)
+def get_validation(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    owned_project_or_404(db, project_id, user)
+    return db.scalar(
+        select(ValidationRequest)
+        .where(ValidationRequest.project_id == project_id)
+        .order_by(ValidationRequest.created_at.desc())
+        .limit(1)
+    )
 
 
 XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

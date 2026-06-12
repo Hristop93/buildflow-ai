@@ -158,6 +158,17 @@ export interface RiskResult {
   histogram: { irr: number; count: number }[]
 }
 
+export interface ValidationRequest {
+  id: number
+  project_id: number
+  status: 'requested' | 'in_review' | 'approved' | 'rejected'
+  note: string | null
+  review_note: string | null
+  certified_pdf_url: string | null
+  created_at: string
+  reviewed_at: string | null
+}
+
 export interface SectionResponse<T = unknown> {
   section: string
   your_tier: string
