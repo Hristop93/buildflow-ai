@@ -288,9 +288,14 @@ function ExportSection({ projectId }: { projectId: string }) {
     <div style={{ padding: '12px' }}>
       <div style={{ textAlign: 'center' }}>
         <p>Excel пакет с всички секции (Резюме, Маршрут, Такси, График, Икономика).</p>
-        <a href={`/projects/${projectId}/export/xlsx`} download>
-          <button className="amber" type="button">⬇ Изтегли Excel</button>
-        </a>
+        <div className="row" style={{ justifyContent: 'center' }}>
+          <a href={`/projects/${projectId}/export/xlsx`} download>
+            <button className="amber" type="button">⬇ Изтегли Excel</button>
+          </a>
+          <a href={`/projects/${projectId}/export/pdf`} download>
+            <button className="secondary" type="button">⬇ Изтегли PDF</button>
+          </a>
+        </div>
         <p className="muted" style={{ marginTop: 16, fontSize: 13 }}>
           Докладът се генерира от последното изчисление и носи печат „изчислено по актове в сила към {today}“.
         </p>
