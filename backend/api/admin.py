@@ -330,8 +330,15 @@ def delete_procedure(procedure_id: str, db: Session = Depends(get_db)):
 # --- Procedure graph: rules --------------------------------------------------
 @router.post("/rules", response_model=schemas.RuleOut, status_code=201)
 def create_rule(payload: schemas.RuleIn, db: Session = Depends(get_db)):
-    if payload.operator not in RULE_OPERATORS:
-        raise HTTPException(400, f"operator must be one of {sorted(RULE_OPERATORS)}")
+    if payload.conditions:
+        for c in payload.conditions:
+            if c.op not in RULE_OPERATORS:
+                raise HTTPException(400, f"condition op must be one of {sorted(RULE_OPERATORS)}")
+    else:
+        if not (payload.param_name and payload.operator and payload.value is not None):
+            raise HTTPException(400, "provide either conditions[] or param_name+operator+value")
+        if payload.operator not in RULE_OPERATORS:
+            raise HTTPException(400, f"operator must be one of {sorted(RULE_OPERATORS)}")
     if payload.action not in RULE_ACTIONS:
         raise HTTPException(400, f"action must be one of {sorted(RULE_ACTIONS)}")
     _require(db, Procedure, payload.target_procedure_id, "target_procedure_id")
@@ -343,6 +350,7 @@ def create_rule(payload: schemas.RuleIn, db: Session = Depends(get_db)):
     rule = Rule(
         id=rid, param_name=payload.param_name, operator=payload.operator,
         value=payload.value, action=payload.action,
+        conditions=[c.model_dump() for c in payload.conditions] if payload.conditions else None,
         target_procedure_id=payload.target_procedure_id,
         target_institution_id=payload.target_institution_id,
         municipality_id=payload.municipality_id, explanation=payload.explanation,

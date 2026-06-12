@@ -60,6 +60,8 @@ PROCEDURES = [
     {"id": "PRO-11", "name": "Строително-монтажни работи", "institution": "INST-11", "duration_days": 120, "act": None},
     {"id": "PRO-12", "name": "Въвеждане в експлоатация", "institution": "INST-06", "duration_days": 60, "act": "ACT-05"},
     {"id": "PRO-13", "name": "Лицензиране/регистрация в КЕВР", "institution": "INST-05", "duration_days": 90, "act": "ACT-13"},
+    # Conditional step — pulled in by rule R-04 (protected zone), not in the base set.
+    {"id": "PRO-14", "name": "Пълна ОВОС / оценка за съвместимост (Натура 2000)", "institution": "INST-02", "duration_days": 120, "act": "ACT-09"},
 ]
 
 # --- Dependencies (edges: successor depends on predecessors) ------------------
@@ -71,11 +73,14 @@ DEPENDENCIES = {
     "PRO-06": ["PRO-02"],
     "PRO-07": ["PRO-04", "PRO-03"],
     "PRO-08": ["PRO-07"],
-    "PRO-09": ["PRO-08", "PRO-05", "PRO-06"],
+    # PRO-14 in PRO-09's predecessors only bites when PRO-14 is active — the
+    # engine drops edges to inactive nodes, so non-protected projects keep 420.
+    "PRO-09": ["PRO-08", "PRO-05", "PRO-06", "PRO-14"],
     "PRO-10": ["PRO-09"],
     "PRO-11": ["PRO-09"],
     "PRO-12": ["PRO-11", "PRO-10"],
     "PRO-13": ["PRO-12"],
+    "PRO-14": ["PRO-06"],
 }
 
 # --- Documents (the paper trail) --------------------------------------------
@@ -124,22 +129,34 @@ FEE_TARIFFS = [
     {"id": "FEE-06", "procedure": "PRO-09", "desc": "Такса разрешение за строеж", "basis": "per_sqm_rzp", "rate": 1.5, "act": "ACT-04"},
     {"id": "FEE-07", "procedure": "PRO-12", "desc": "Такса въвеждане в експлоатация", "basis": "fixed", "rate": 1500, "act": "ACT-14"},
     {"id": "FEE-08", "procedure": "PRO-13", "desc": "Такса лиценз КЕВР", "basis": "fixed", "rate": 2000, "act": "ACT-13"},
+    # Counted only when PRO-14 is active (protected zone) — etalon unaffected.
+    {"id": "FEE-09", "procedure": "PRO-14", "desc": "Такса пълна ОВОС/ОС", "basis": "fixed", "rate": 1500, "act": "ACT-09"},
 ]
 
 # --- Rules (conditional include/exclude/switch) ------------------------------
+# Compound form: "conditions" = [{param, op, value}, ...] — ALL must hold (AND).
 RULES = [
     {"id": "R-01", "param": "land_status", "op": "!=", "value": "agricultural", "action": "exclude", "target": "PRO-05"},
     {"id": "R-02", "param": "power_mw", "op": "<", "value": 1, "action": "exclude", "target": "PRO-13"},
     {"id": "R-03", "param": "voltage", "op": "=", "value": "high", "action": "switch_institution", "target": "PRO-03", "target_institution": "INST-04"},
-    # Note: the OVOS *screening* (PRO-06) is always present; only a FULL OVOS/Natura
-    # assessment would be a separate conditional procedure (added when protected_zone=True).
+    # Full ОВОС/ОС in a protected zone for non-trivial plants (representative
+    # threshold — verify the real one against ЗООС annexes).
+    {"id": "R-04", "action": "include", "target": "PRO-14",
+     "conditions": [
+         {"param": "protected_zone", "op": "=", "value": True},
+         {"param": "power_mw", "op": ">=", "value": 1},
+     ],
+     "explanation": "Натура 2000: пълна оценка при защитена зона и мощност ≥ 1 MW"},
 ]
 
 # --- Project types ----------------------------------------------------------
+# Conditional steps live OUTSIDE the base set — rules pull them in (R-04 -> PRO-14).
+CONDITIONAL_PROCEDURES = {"PRO-14"}
+
 PROJECT_TYPES = {
     "pv_ground": {
         "name": "Наземна фотоволтаична централа",
-        "procedures": [p["id"] for p in PROCEDURES],  # all 13 in the base set
+        "procedures": [p["id"] for p in PROCEDURES if p["id"] not in CONDITIONAL_PROCEDURES],
     },
 }
 

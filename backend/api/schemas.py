@@ -201,12 +201,21 @@ class ProcedureInputIn(BaseModel):
     document_id: str
 
 
+class RuleCondition(BaseModel):
+    param: str
+    op: str                  # = | != | >= | <= | < | > | in
+    value: Any               # native JSON type (bool/number/string)
+
+
 class RuleIn(BaseModel):
+    """Either the legacy single triple (param_name/operator/value) or the
+    compound `conditions` list (ALL must hold). One of the two is required."""
     id: str | None = None
-    param_name: str
-    operator: str           # = | != | >= | <= | < | > | in
-    value: str
-    action: str             # include | exclude | switch_institution
+    param_name: str | None = None
+    operator: str | None = None   # = | != | >= | <= | < | > | in
+    value: str | None = None
+    conditions: list[RuleCondition] | None = None
+    action: str                   # include | exclude | switch_institution
     target_procedure_id: str | None = None
     target_institution_id: str | None = None
     municipality_id: int | None = None
@@ -217,9 +226,10 @@ class RuleOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    param_name: str
-    operator: str
-    value: str
+    param_name: str | None
+    operator: str | None
+    value: str | None
+    conditions: list[RuleCondition] | None
     action: str
     target_procedure_id: str | None
     target_institution_id: str | None

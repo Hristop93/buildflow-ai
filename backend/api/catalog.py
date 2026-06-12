@@ -82,6 +82,8 @@ def load_catalog(db: Session, municipality_id: int | None = None) -> Catalog:
             "action": r.action,
             "target": r.target_procedure_id,
             "target_institution": r.target_institution_id,
+            # JSON conditions keep native types (bool/number/str) — no coercion.
+            "conditions": r.conditions,
         }
         for r in db.scalars(select(Rule).where(_scope(Rule))).all()
     ]

@@ -112,15 +112,19 @@ class Rule(Base):
     __table_args__ = {"schema": SCHEMA}
 
     id = Column(String, primary_key=True)
-    param_name = Column(String, nullable=False)
-    operator = Column(String, nullable=False)  # = | != | >= | <= | in
-    value = Column(String, nullable=False)
+    # Legacy single condition — nullable because compound rules use `conditions`.
+    param_name = Column(String, nullable=True)
+    operator = Column(String, nullable=True)  # = | != | >= | <= | < | > | in
+    value = Column(String, nullable=True)
     action = Column(String, nullable=False)   # include | exclude | switch_institution
     target_procedure_id = Column(String, ForeignKey("core.procedures.id"), nullable=True)
     target_institution_id = Column(String, ForeignKey("core.institutions.id"), nullable=True)
     explanation = Column(Text, nullable=True)
     # None = national rule; set = applies only to projects in this municipality.
     municipality_id = Column(Integer, ForeignKey("core.municipalities.id"), nullable=True)
+    # Compound AND-conditions: [{"param","op","value"}, ...]. When set, ALL must
+    # hold and the legacy param/op/value columns are ignored. OR = two rules.
+    conditions = Column(JSON, nullable=True)
 
 
 class ProjectType(Base):

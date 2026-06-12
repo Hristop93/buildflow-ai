@@ -144,12 +144,14 @@ def _load_rules(db):
             continue
         db.add(Rule(
             id=row["id"],
-            param_name=row["param"],
-            operator=row["op"],
-            value=str(row["value"]),
+            param_name=row.get("param"),
+            operator=row.get("op"),
+            value=str(row["value"]) if "value" in row else None,
             action=row["action"],
             target_procedure_id=row.get("target"),
             target_institution_id=row.get("target_institution"),
+            conditions=row.get("conditions"),
+            explanation=row.get("explanation"),
         ))
     print(f"  rules: {len(RULES)}")
 
