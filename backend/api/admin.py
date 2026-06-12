@@ -19,6 +19,7 @@ from backend.db.models.app import User, Project, ValidationRequest
 from backend.db.models.core import NormativeAct, FeeTariff, Procedure, Municipality
 from backend.api import schemas
 from backend.api.deps import get_current_admin
+from backend.services.monitoring import propagate_tariff_change
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_admin)])
 
@@ -190,6 +191,9 @@ def revise_tariff(tariff_id: str, payload: schemas.TariffRevise, db: Session = D
     db.add(new)
     db.commit()
     db.refresh(new)
+
+    # 'Актуалност': recalc + notify subscribed projects that use this procedure.
+    propagate_tariff_change(db, new.procedure_id, reason="актуалност: промяна в тарифа")
     return new
 
 

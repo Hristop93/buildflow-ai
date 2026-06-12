@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from backend.db.base import get_db
 from backend.db.models.app import (
-    User, Project, ProjectParam, ProjectVersion, ProjectNode, Event, ValidationRequest,
+    User, Project, ProjectParam, ProjectVersion, ProjectNode, Event,
+    ValidationRequest, Subscription,
 )
 from backend.db.models.core import ProjectType, Procedure, Municipality
 from backend.api import schemas, tiers
@@ -212,6 +213,68 @@ def list_versions(
         .where(ProjectVersion.project_id == project_id)
         .order_by(ProjectVersion.version_no.desc())
     ).all()
+
+
+SUB_PLAN = "aktualnost"
+
+
+@app.post("/projects/{project_id}/subscription", response_model=schemas.SubscriptionOut, status_code=201)
+def subscribe(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Turn on 'Актуалност' monitoring for the project. Added to any paid tier
+    (SPEC 6), so free projects can't subscribe."""
+    project = owned_project_or_404(db, project_id, user)
+    if project.tier == "free":
+        raise HTTPException(403, {"error": "paid_tier_required", "your_tier": project.tier})
+
+    sub = db.scalar(
+        select(Subscription)
+        .where(Subscription.project_id == project_id)
+        .where(Subscription.plan == SUB_PLAN)
+    )
+    if sub is None:
+        sub = Subscription(user_id=user.id, project_id=project_id, plan=SUB_PLAN, status="active")
+        db.add(sub)
+    else:
+        sub.status = "active"
+    db.commit()
+    db.refresh(sub)
+    return sub
+
+
+@app.delete("/projects/{project_id}/subscription", status_code=204)
+def unsubscribe(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    owned_project_or_404(db, project_id, user)
+    sub = db.scalar(
+        select(Subscription)
+        .where(Subscription.project_id == project_id)
+        .where(Subscription.plan == SUB_PLAN)
+    )
+    if sub is not None:
+        sub.status = "cancelled"
+        db.commit()
+
+
+@app.get("/projects/{project_id}/subscription", response_model=schemas.SubscriptionOut | None)
+def get_subscription(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    owned_project_or_404(db, project_id, user)
+    return db.scalar(
+        select(Subscription)
+        .where(Subscription.project_id == project_id)
+        .where(Subscription.plan == SUB_PLAN)
+        .where(Subscription.status == "active")
+    )
 
 
 PENDING_VALIDATION = ("requested", "in_review")
