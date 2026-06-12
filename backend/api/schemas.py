@@ -146,6 +146,79 @@ class TariffOut(BaseModel):
     valid_to: date | None
 
 
+# --- Admin: procedure graph (procedures / rules / dependencies) --------------
+class ProcedureIn(BaseModel):
+    id: str | None = None  # auto-generated if omitted
+    name: str
+    institution_id: str | None = None
+    statutory_term_days: int | None = Field(default=None, ge=0)
+    act_id: str | None = None
+    municipality_id: int | None = None  # None = national step
+    note: str | None = None
+
+
+class ProcedureUpdate(BaseModel):
+    name: str | None = None
+    institution_id: str | None = None
+    statutory_term_days: int | None = Field(default=None, ge=0)
+    act_id: str | None = None
+    note: str | None = None
+
+
+class ProcedureOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    institution_id: str | None
+    statutory_term_days: int | None
+    act_id: str | None
+    municipality_id: int | None
+    note: str | None
+
+
+class RuleIn(BaseModel):
+    id: str | None = None
+    param_name: str
+    operator: str           # = | != | >= | <= | < | > | in
+    value: str
+    action: str             # include | exclude | switch_institution
+    target_procedure_id: str | None = None
+    target_institution_id: str | None = None
+    municipality_id: int | None = None
+    explanation: str | None = None
+
+
+class RuleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    param_name: str
+    operator: str
+    value: str
+    action: str
+    target_procedure_id: str | None
+    target_institution_id: str | None
+    municipality_id: int | None
+    explanation: str | None
+
+
+class DependencyIn(BaseModel):
+    successor_id: str
+    predecessor_id: str
+    municipality_id: int | None = None
+    link_type: str = "finish_start"
+
+
+class DependencyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    successor_id: str
+    predecessor_id: str
+    municipality_id: int | None
+    link_type: str | None
+
+
 # --- "Актуалност" subscription -----------------------------------------------
 class SubscriptionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

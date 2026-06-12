@@ -11,12 +11,14 @@ from datetime import date, datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 
 from backend.db.base import get_db
-from backend.db.models.app import User, Project, ValidationRequest
-from backend.db.models.core import NormativeAct, FeeTariff, Procedure, Municipality
+from backend.db.models.app import User, Project, ValidationRequest, ProjectNode
+from backend.db.models.core import (
+    NormativeAct, FeeTariff, Procedure, Municipality, Rule, Dependency, Institution,
+)
 from backend.api import schemas
 from backend.api.deps import get_current_admin
 from backend.services.monitoring import propagate_tariff_change
@@ -26,6 +28,13 @@ router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_cu
 ALLOWED_BASES = {"fixed", "per_sqm_rzp", "pct_of_value", "per_mw"}
 ALLOWED_LEVELS = {"state", "municipal"}
 REVIEW_STATUSES = {"in_review", "approved", "rejected"}
+RULE_OPERATORS = {"=", "!=", ">=", "<=", "<", ">", "in"}
+RULE_ACTIONS = {"include", "exclude", "switch_institution"}
+
+
+def _require(db, model, pk, label):
+    if pk is not None and db.get(model, pk) is None:
+        raise HTTPException(400, f"unknown {label}: {pk}")
 
 
 def _new_id(prefix: str) -> str:
@@ -243,3 +252,159 @@ def review_validation(
     db.commit()
     db.refresh(req)
     return req
+
+
+# --- Procedure graph: procedures --------------------------------------------
+# Unlike acts/tariffs (append-only, cited), the graph is editable config: past
+# reports are snapshotted, so edits only affect future recalcs. None
+# municipality_id = national step; set = required only in that municipality.
+@router.post("/procedures", response_model=schemas.ProcedureOut, status_code=201)
+def create_procedure(payload: schemas.ProcedureIn, db: Session = Depends(get_db)):
+    _require(db, Institution, payload.institution_id, "institution_id")
+    _require(db, NormativeAct, payload.act_id, "act_id")
+    _require(db, Municipality, payload.municipality_id, "municipality_id")
+    pid = payload.id or _new_id("PRO")
+    if db.get(Procedure, pid) is not None:
+        raise HTTPException(409, f"procedure {pid} already exists")
+    proc = Procedure(
+        id=pid, name=payload.name, institution_id=payload.institution_id,
+        statutory_term_days=payload.statutory_term_days, act_id=payload.act_id,
+        municipality_id=payload.municipality_id, note=payload.note,
+    )
+    db.add(proc)
+    db.commit()
+    db.refresh(proc)
+    return proc
+
+
+@router.get("/procedures", response_model=list[schemas.ProcedureOut])
+def list_procedures(municipality_id: int | None = None, national: bool = True, db: Session = Depends(get_db)):
+    stmt = select(Procedure)
+    if municipality_id is not None:
+        scope = [Procedure.municipality_id == municipality_id]
+        if national:
+            scope.append(Procedure.municipality_id.is_(None))
+        stmt = stmt.where(or_(*scope))
+    return db.scalars(stmt.order_by(Procedure.id)).all()
+
+
+@router.patch("/procedures/{procedure_id}", response_model=schemas.ProcedureOut)
+def update_procedure(procedure_id: str, payload: schemas.ProcedureUpdate, db: Session = Depends(get_db)):
+    proc = db.get(Procedure, procedure_id)
+    if proc is None:
+        raise HTTPException(404, "procedure not found")
+    _require(db, Institution, payload.institution_id, "institution_id")
+    _require(db, NormativeAct, payload.act_id, "act_id")
+    for field in ("name", "institution_id", "statutory_term_days", "act_id", "note"):
+        val = getattr(payload, field)
+        if val is not None:
+            setattr(proc, field, val)
+    db.commit()
+    db.refresh(proc)
+    return proc
+
+
+@router.delete("/procedures/{procedure_id}", status_code=204)
+def delete_procedure(procedure_id: str, db: Session = Depends(get_db)):
+    if db.get(Procedure, procedure_id) is None:
+        raise HTTPException(404, "procedure not found")
+    refs = []
+    if db.scalar(select(ProjectNode.id).where(ProjectNode.procedure_id == procedure_id).limit(1)):
+        refs.append("projects")
+    if db.scalar(select(Dependency.successor_id).where(
+            or_(Dependency.successor_id == procedure_id, Dependency.predecessor_id == procedure_id)).limit(1)):
+        refs.append("dependencies")
+    if db.scalar(select(FeeTariff.id).where(FeeTariff.procedure_id == procedure_id).limit(1)):
+        refs.append("tariffs")
+    if db.scalar(select(Rule.id).where(Rule.target_procedure_id == procedure_id).limit(1)):
+        refs.append("rules")
+    if refs:
+        raise HTTPException(409, f"procedure is still referenced by: {', '.join(refs)}")
+    db.delete(db.get(Procedure, procedure_id))
+    db.commit()
+
+
+# --- Procedure graph: rules --------------------------------------------------
+@router.post("/rules", response_model=schemas.RuleOut, status_code=201)
+def create_rule(payload: schemas.RuleIn, db: Session = Depends(get_db)):
+    if payload.operator not in RULE_OPERATORS:
+        raise HTTPException(400, f"operator must be one of {sorted(RULE_OPERATORS)}")
+    if payload.action not in RULE_ACTIONS:
+        raise HTTPException(400, f"action must be one of {sorted(RULE_ACTIONS)}")
+    _require(db, Procedure, payload.target_procedure_id, "target_procedure_id")
+    _require(db, Institution, payload.target_institution_id, "target_institution_id")
+    _require(db, Municipality, payload.municipality_id, "municipality_id")
+    rid = payload.id or _new_id("R")
+    if db.get(Rule, rid) is not None:
+        raise HTTPException(409, f"rule {rid} already exists")
+    rule = Rule(
+        id=rid, param_name=payload.param_name, operator=payload.operator,
+        value=payload.value, action=payload.action,
+        target_procedure_id=payload.target_procedure_id,
+        target_institution_id=payload.target_institution_id,
+        municipality_id=payload.municipality_id, explanation=payload.explanation,
+    )
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+@router.get("/rules", response_model=list[schemas.RuleOut])
+def list_rules(municipality_id: int | None = None, national: bool = True, db: Session = Depends(get_db)):
+    stmt = select(Rule)
+    if municipality_id is not None:
+        scope = [Rule.municipality_id == municipality_id]
+        if national:
+            scope.append(Rule.municipality_id.is_(None))
+        stmt = stmt.where(or_(*scope))
+    return db.scalars(stmt.order_by(Rule.id)).all()
+
+
+@router.delete("/rules/{rule_id}", status_code=204)
+def delete_rule(rule_id: str, db: Session = Depends(get_db)):
+    rule = db.get(Rule, rule_id)
+    if rule is None:
+        raise HTTPException(404, "rule not found")
+    db.delete(rule)
+    db.commit()
+
+
+# --- Procedure graph: dependencies -------------------------------------------
+@router.post("/dependencies", response_model=schemas.DependencyOut, status_code=201)
+def create_dependency(payload: schemas.DependencyIn, db: Session = Depends(get_db)):
+    _require(db, Procedure, payload.successor_id, "successor_id")
+    _require(db, Procedure, payload.predecessor_id, "predecessor_id")
+    if payload.successor_id == payload.predecessor_id:
+        raise HTTPException(400, "a procedure cannot depend on itself")
+    _require(db, Municipality, payload.municipality_id, "municipality_id")
+    if db.get(Dependency, (payload.successor_id, payload.predecessor_id)) is not None:
+        raise HTTPException(409, "this edge already exists")
+    dep = Dependency(
+        successor_id=payload.successor_id, predecessor_id=payload.predecessor_id,
+        municipality_id=payload.municipality_id, link_type=payload.link_type,
+    )
+    db.add(dep)
+    db.commit()
+    db.refresh(dep)
+    return dep
+
+
+@router.get("/dependencies", response_model=list[schemas.DependencyOut])
+def list_dependencies(municipality_id: int | None = None, national: bool = True, db: Session = Depends(get_db)):
+    stmt = select(Dependency)
+    if municipality_id is not None:
+        scope = [Dependency.municipality_id == municipality_id]
+        if national:
+            scope.append(Dependency.municipality_id.is_(None))
+        stmt = stmt.where(or_(*scope))
+    return db.scalars(stmt).all()
+
+
+@router.delete("/dependencies/{successor_id}/{predecessor_id}", status_code=204)
+def delete_dependency(successor_id: str, predecessor_id: str, db: Session = Depends(get_db)):
+    dep = db.get(Dependency, (successor_id, predecessor_id))
+    if dep is None:
+        raise HTTPException(404, "dependency not found")
+    db.delete(dep)
+    db.commit()
