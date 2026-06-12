@@ -377,12 +377,18 @@ function SectionBody({ name, data }: { name: string; data: Record<string, unknow
     const steps = data.route as RouteStep[]
     return (
       <table>
-        <thead><tr><th>Процедура</th><th>Институция</th><th>Основание</th><th className="num">Дни</th></tr></thead>
+        <thead><tr><th>Процедура</th><th>Институция</th><th>Документи</th><th>Основание</th><th className="num">Дни</th></tr></thead>
         <tbody>
           {steps.map((r) => (
             <tr key={r.procedure_id}>
               <td>{r.name} {r.is_critical && <span className="tag-critical">• критична</span>}</td>
               <td className="muted">{r.institution}</td>
+              <td className="muted" style={{ fontSize: 12.5 }}>
+                {r.input_documents.length > 0 && <span title="входни документи">вх: {r.input_documents.join(', ')}</span>}
+                {r.input_documents.length > 0 && r.output_document && <br />}
+                {r.output_document && <span title="изходен документ">→ {r.output_document}</span>}
+                {r.input_documents.length === 0 && !r.output_document && '—'}
+              </td>
               <td className="muted">{r.act ?? '—'}</td>
               <td className="num">{r.duration_days}</td>
             </tr>

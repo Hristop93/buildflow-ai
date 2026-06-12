@@ -78,6 +78,41 @@ DEPENDENCIES = {
     "PRO-13": ["PRO-12"],
 }
 
+# --- Documents (the paper trail) --------------------------------------------
+# Representative; verify the real input/output document lists per procedure.
+DOCUMENTS = [
+    {"id": "DOC-01", "name": "Документ за собственост/суперфиция", "issuer": "INST-11"},
+    {"id": "DOC-02", "name": "Скица на поземления имот", "issuer": "INST-07"},
+    {"id": "DOC-03", "name": "Становище за условия на присъединяване", "issuer": "INST-03"},
+    {"id": "DOC-04", "name": "Виза за проектиране", "issuer": "INST-01"},
+    {"id": "DOC-05", "name": "Решение за промяна на предназначението", "issuer": "INST-08"},
+    {"id": "DOC-06", "name": "Решение по преценка за ОВОС", "issuer": "INST-02"},
+    {"id": "DOC-07", "name": "Инвестиционен проект", "issuer": "INST-11"},
+    {"id": "DOC-08", "name": "Оценка за съответствие", "issuer": "INST-01"},
+    {"id": "DOC-09", "name": "Разрешение за строеж", "issuer": "INST-01"},
+    {"id": "DOC-10", "name": "Удостоверение за въвеждане в експлоатация", "issuer": "INST-06"},
+]
+
+# procedure -> the document it produces
+PROCEDURE_OUTPUTS = {
+    "PRO-01": "DOC-01", "PRO-02": "DOC-02", "PRO-03": "DOC-03", "PRO-04": "DOC-04",
+    "PRO-05": "DOC-05", "PRO-06": "DOC-06", "PRO-07": "DOC-07", "PRO-08": "DOC-08",
+    "PRO-09": "DOC-09", "PRO-12": "DOC-10",
+}
+
+# procedure -> documents it needs as input (M:N)
+PROCEDURE_INPUTS = {
+    "PRO-02": ["DOC-01"],
+    "PRO-04": ["DOC-02"],
+    "PRO-05": ["DOC-02"],
+    "PRO-06": ["DOC-02"],
+    "PRO-07": ["DOC-03", "DOC-04"],
+    "PRO-08": ["DOC-07"],
+    "PRO-09": ["DOC-08", "DOC-05", "DOC-06"],
+    "PRO-11": ["DOC-09"],
+    "PRO-12": ["DOC-09"],
+}
+
 # --- Fee tariffs ------------------------------------------------------------
 # basis: 'fixed' | 'per_sqm_rzp' | 'pct_of_value' | 'per_mw'
 FEE_TARIFFS = [

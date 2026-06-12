@@ -162,6 +162,7 @@ class ProcedureUpdate(BaseModel):
     institution_id: str | None = None
     statutory_term_days: int | None = Field(default=None, ge=0)
     act_id: str | None = None
+    output_document_id: str | None = None
     note: str | None = None
 
 
@@ -173,8 +174,31 @@ class ProcedureOut(BaseModel):
     institution_id: str | None
     statutory_term_days: int | None
     act_id: str | None
+    output_document_id: str | None
     municipality_id: int | None
     note: str | None
+
+
+class DocumentIn(BaseModel):
+    id: str | None = None
+    name: str
+    issuer_institution_id: str | None = None
+    doc_type: str | None = None
+    note: str | None = None
+
+
+class DocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    issuer_institution_id: str | None
+    doc_type: str | None
+    note: str | None
+
+
+class ProcedureInputIn(BaseModel):
+    document_id: str
 
 
 class RuleIn(BaseModel):

@@ -18,6 +18,7 @@ from backend.db.base import get_db
 from backend.db.models.app import User, Project, ValidationRequest, ProjectNode
 from backend.db.models.core import (
     NormativeAct, FeeTariff, Procedure, Municipality, Rule, Dependency, Institution,
+    Document, ProcedureInput,
 )
 from backend.api import schemas
 from backend.api.deps import get_current_admin
@@ -295,7 +296,8 @@ def update_procedure(procedure_id: str, payload: schemas.ProcedureUpdate, db: Se
         raise HTTPException(404, "procedure not found")
     _require(db, Institution, payload.institution_id, "institution_id")
     _require(db, NormativeAct, payload.act_id, "act_id")
-    for field in ("name", "institution_id", "statutory_term_days", "act_id", "note"):
+    _require(db, Document, payload.output_document_id, "output_document_id")
+    for field in ("name", "institution_id", "statutory_term_days", "act_id", "output_document_id", "note"):
         val = getattr(payload, field)
         if val is not None:
             setattr(proc, field, val)
@@ -407,4 +409,74 @@ def delete_dependency(successor_id: str, predecessor_id: str, db: Session = Depe
     if dep is None:
         raise HTTPException(404, "dependency not found")
     db.delete(dep)
+    db.commit()
+
+
+# --- Documents ("what documents are needed") ---------------------------------
+@router.post("/documents", response_model=schemas.DocumentOut, status_code=201)
+def create_document(payload: schemas.DocumentIn, db: Session = Depends(get_db)):
+    _require(db, Institution, payload.issuer_institution_id, "issuer_institution_id")
+    did = payload.id or _new_id("DOC")
+    if db.get(Document, did) is not None:
+        raise HTTPException(409, f"document {did} already exists")
+    doc = Document(
+        id=did, name=payload.name, issuer_institution_id=payload.issuer_institution_id,
+        doc_type=payload.doc_type, note=payload.note,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+
+@router.get("/documents", response_model=list[schemas.DocumentOut])
+def list_documents(db: Session = Depends(get_db)):
+    return db.scalars(select(Document).order_by(Document.id)).all()
+
+
+@router.delete("/documents/{document_id}", status_code=204)
+def delete_document(document_id: str, db: Session = Depends(get_db)):
+    if db.get(Document, document_id) is None:
+        raise HTTPException(404, "document not found")
+    refs = []
+    if db.scalar(select(ProcedureInput.document_id).where(ProcedureInput.document_id == document_id).limit(1)):
+        refs.append("procedure inputs")
+    if db.scalar(select(Procedure.id).where(Procedure.output_document_id == document_id).limit(1)):
+        refs.append("procedure outputs")
+    if refs:
+        raise HTTPException(409, f"document is still referenced by: {', '.join(refs)}")
+    db.delete(db.get(Document, document_id))
+    db.commit()
+
+
+# --- Procedure input documents (M:N) -----------------------------------------
+@router.post("/procedures/{procedure_id}/inputs", status_code=201)
+def add_procedure_input(procedure_id: str, payload: schemas.ProcedureInputIn, db: Session = Depends(get_db)):
+    if db.get(Procedure, procedure_id) is None:
+        raise HTTPException(404, "procedure not found")
+    if db.get(Document, payload.document_id) is None:
+        raise HTTPException(400, f"unknown document_id: {payload.document_id}")
+    if db.get(ProcedureInput, (procedure_id, payload.document_id)) is not None:
+        raise HTTPException(409, "this input document is already linked")
+    db.add(ProcedureInput(procedure_id=procedure_id, document_id=payload.document_id))
+    db.commit()
+    return {"procedure_id": procedure_id, "document_id": payload.document_id}
+
+
+@router.get("/procedures/{procedure_id}/inputs", response_model=list[schemas.DocumentOut])
+def list_procedure_inputs(procedure_id: str, db: Session = Depends(get_db)):
+    if db.get(Procedure, procedure_id) is None:
+        raise HTTPException(404, "procedure not found")
+    doc_ids = db.scalars(
+        select(ProcedureInput.document_id).where(ProcedureInput.procedure_id == procedure_id)
+    ).all()
+    return db.scalars(select(Document).where(Document.id.in_(doc_ids)).order_by(Document.id)).all()
+
+
+@router.delete("/procedures/{procedure_id}/inputs/{document_id}", status_code=204)
+def remove_procedure_input(procedure_id: str, document_id: str, db: Session = Depends(get_db)):
+    link = db.get(ProcedureInput, (procedure_id, document_id))
+    if link is None:
+        raise HTTPException(404, "input link not found")
+    db.delete(link)
     db.commit()

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.models.core import (
     Procedure, Dependency, Rule, FeeTariff, NormativeAct, ProjectType,
+    Document, ProcedureInput,
 )
 
 
@@ -26,6 +27,8 @@ class Catalog:
     fee_tariffs: list[dict]
     acts: list[dict]
     project_types: dict[str, dict]
+    documents: dict[str, str]              # doc_id -> name
+    procedure_inputs: dict[str, list[str]]  # procedure_id -> [doc_id]
 
 
 def _coerce(value: str):
@@ -56,9 +59,15 @@ def load_catalog(db: Session, municipality_id: int | None = None) -> Catalog:
             "institution": p.institution_id,
             "duration_days": p.statutory_term_days,
             "act": p.act_id,
+            "output_document": p.output_document_id,
         }
         for p in db.scalars(select(Procedure).where(_scope(Procedure))).all()
     ]
+
+    documents = {d.id: d.name for d in db.scalars(select(Document)).all()}
+    procedure_inputs: dict[str, list[str]] = {}
+    for pi in db.scalars(select(ProcedureInput)).all():
+        procedure_inputs.setdefault(pi.procedure_id, []).append(pi.document_id)
 
     dependencies: dict[str, list[str]] = {}
     for d in db.scalars(select(Dependency).where(_scope(Dependency))).all():
@@ -119,4 +128,6 @@ def load_catalog(db: Session, municipality_id: int | None = None) -> Catalog:
         fee_tariffs=fee_tariffs,
         acts=acts,
         project_types=project_types,
+        documents=documents,
+        procedure_inputs=procedure_inputs,
     )

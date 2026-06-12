@@ -79,6 +79,8 @@ export interface RouteStep {
   end_day: number
   duration_days: number
   is_critical: boolean
+  input_documents: string[]
+  output_document: string | null
 }
 
 export interface FeeCitation {
