@@ -33,10 +33,23 @@ export default function Project() {
   const [section, setSection] = useState<SectionResponse | null>(null)
   const [state, setState] = useState<'ok' | 'loading' | 'locked' | 'soon' | 'norecalc' | 'error' | 'export'>('loading')
   const [recalcing, setRecalcing] = useState(false)
+  const [subscribed, setSubscribed] = useState<boolean | null>(null)
 
   useEffect(() => {
     api.get<ProjectT>(`/projects/${id}`).then(setProject).catch(() => setState('error'))
+    api.get<{ status: string } | null>(`/projects/${id}/subscription`)
+      .then((s) => setSubscribed(!!s)).catch(() => setSubscribed(false))
   }, [id])
+
+  const toggleSubscription = async () => {
+    if (subscribed) {
+      await api.del(`/projects/${id}/subscription`)
+      setSubscribed(false)
+    } else {
+      await api.post(`/projects/${id}/subscription`)
+      setSubscribed(true)
+    }
+  }
 
   const tierRank = project ? TIER_RANK[project.tier] : -1
 
@@ -91,9 +104,20 @@ export default function Project() {
           <span className={`badge ${project.tier}`}>{project.tier}</span>
           <span className="muted" style={{ marginLeft: 10 }}>{project.project_type_id}</span>
         </div>
-        <button className="secondary" onClick={recalc} disabled={recalcing}>
-          {recalcing ? 'Преизчисляване…' : 'Преизчисли'}
-        </button>
+        <div className="row">
+          {project.tier !== 'free' && subscribed !== null && (
+            <button
+              className={subscribed ? 'amber' : 'secondary'}
+              onClick={toggleSubscription}
+              title="Мониторинг на актове и тарифи с авто-преизчисление"
+            >
+              {subscribed ? '🔔 Актуалност: вкл.' : '🔕 Актуалност: изкл.'}
+            </button>
+          )}
+          <button className="secondary" onClick={recalc} disabled={recalcing}>
+            {recalcing ? 'Преизчисляване…' : 'Преизчисли'}
+          </button>
+        </div>
       </div>
 
       <div className="project-layout">

@@ -146,6 +146,17 @@ class TariffOut(BaseModel):
     valid_to: date | None
 
 
+# --- "Актуалност" subscription -----------------------------------------------
+class SubscriptionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: int | None
+    plan: str | None
+    status: str | None
+    active_until: Any
+
+
 # --- Expert validation (dd) --------------------------------------------------
 class ValidationRequestIn(BaseModel):
     note: str | None = None
