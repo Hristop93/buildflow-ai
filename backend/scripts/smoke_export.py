@@ -90,12 +90,20 @@ def main():
         _check(f"sheet '{sheet}' present", sheet in workbook_xml, True)
     print(f"        workbook size: {len(body)} bytes")
 
-    # pro tier is gated out
+    # --- PDF report ----------------------------------------------------------
+    pstatus, pheaders, pbody = _download(op, f"/projects/{pid}/export/pdf")
+    _check("pdf download -> 200", pstatus, 200)
+    _check("content-type is pdf", "application/pdf" in pheaders.get("Content-Type", ""), True)
+    _check("body is a real PDF", pbody[:5] == b"%PDF-", True)
+    print(f"        pdf size: {len(pbody)} bytes")
+
+    # pro tier is gated out (both formats)
     pid_pro = _new_project(op, "pro")
     _json(op, "POST", f"/projects/{pid_pro}/recalc")
-    _check("pro tier export -> 403", _download(op, f"/projects/{pid_pro}/export/xlsx")[0], 403)
+    _check("pro tier xlsx -> 403", _download(op, f"/projects/{pid_pro}/export/xlsx")[0], 403)
+    _check("pro tier pdf -> 403", _download(op, f"/projects/{pid_pro}/export/pdf")[0], 403)
 
-    print("\nSMOKE OK - dd Excel export works and is tier-gated.")
+    print("\nSMOKE OK - dd Excel + PDF export work and are tier-gated.")
 
 
 if __name__ == "__main__":

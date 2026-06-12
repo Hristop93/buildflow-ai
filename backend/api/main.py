@@ -23,6 +23,7 @@ from backend.api.deps import get_current_user, owned_project_or_404
 from backend.services.recalc import run_recalc
 from backend.services.sections import build_section, latest_snapshot, NoComputedVersion
 from backend.services.export_xlsx import export_project_xlsx
+from backend.services.export_pdf import export_project_pdf
 
 app = FastAPI(title="Buildflow AI", version="0.1.0")
 app.include_router(auth_router)
@@ -293,6 +294,32 @@ def export_xlsx(
     return Response(
         content=data,
         media_type=XLSX_MEDIA,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/projects/{project_id}/export/pdf")
+def export_pdf(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """PDF report (dd tier, SPEC 5.2)."""
+    project = owned_project_or_404(db, project_id, user)
+    if not tiers.can_access(project.tier, "export"):
+        raise HTTPException(403, {
+            "error": "section_locked", "section": "export",
+            "your_tier": project.tier, "required_tier": tiers.required_tier("export"),
+        })
+    try:
+        data = export_project_pdf(db, project_id, project.name)
+    except NoComputedVersion:
+        raise HTTPException(409, "project has no computed version yet; run recalc first")
+
+    filename = f"buildflow-project-{project_id}.pdf"
+    return Response(
+        content=data,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
