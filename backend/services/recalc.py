@@ -48,7 +48,7 @@ def run_recalc(db: Session, project_id: int, *, reason: str = "recalc") -> dict:
     # The project_type column is authoritative over any stale param copy.
     params["project_type"] = project.project_type_id
 
-    catalog = load_catalog(db)
+    catalog = load_catalog(db, project.municipality_id)
 
     graph = build_active_graph(
         params,
