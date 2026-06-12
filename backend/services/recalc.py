@@ -92,7 +92,8 @@ def run_recalc(db: Session, project_id: int, *, reason: str = "recalc") -> dict:
 
     statuses = _sync_nodes(db, project_id, graph, sched, existing_nodes)
 
-    result = _assemble(project, graph, fee_items, fee_total, sched, econ, statuses)
+    result = _assemble(project, graph, fee_items, fee_total, sched, econ, statuses,
+                       documents=catalog.documents, procedure_inputs=catalog.procedure_inputs)
 
     # Persist a new immutable version + audit event.
     next_no = (
@@ -156,14 +157,18 @@ def _sync_nodes(db: Session, project_id: int, graph, sched, existing_nodes: dict
     return statuses
 
 
-def _assemble(project, graph, fee_items, fee_total, sched, econ, statuses=None) -> dict:
+def _assemble(project, graph, fee_items, fee_total, sched, econ, statuses=None,
+              *, documents=None, procedure_inputs=None) -> dict:
     """Compose the section-shaped payload used by Резюме/Маршрут/Такси/График/Икономика."""
     procs = graph["procedures"]
     institution = graph["institution"]
     nodes = sched["nodes"]
+    documents = documents or {}
+    procedure_inputs = procedure_inputs or {}
 
     route = []
     for pid in sorted(graph["active"], key=lambda p: nodes[p]["start"]):
+        out_doc = procs[pid].get("output_document")
         route.append({
             "procedure_id": pid,
             "name": procs[pid]["name"],
@@ -173,6 +178,8 @@ def _assemble(project, graph, fee_items, fee_total, sched, econ, statuses=None) 
             "end_day": nodes[pid]["end"],
             "duration_days": nodes[pid]["duration"],
             "is_critical": nodes[pid]["critical"],
+            "input_documents": [documents.get(d, d) for d in procedure_inputs.get(pid, [])],
+            "output_document": documents.get(out_doc) if out_doc else None,
         })
 
     # Enrich schedule nodes with the procedure name and current status so the

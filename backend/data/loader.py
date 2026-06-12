@@ -13,11 +13,12 @@ from sqlalchemy import select
 from backend.db.base import SessionLocal
 from backend.db.models.core import (
     Institution, NormativeAct, Procedure, Dependency,
-    FeeTariff, Rule, ProjectType, Municipality,
+    FeeTariff, Rule, ProjectType, Municipality, Document, ProcedureInput,
 )
 from backend.data.seed import (
     INSTITUTIONS, ACTS, PROCEDURES, DEPENDENCIES,
     FEE_TARIFFS, RULES, PROJECT_TYPES, MUNICIPALITIES,
+    DOCUMENTS, PROCEDURE_OUTPUTS, PROCEDURE_INPUTS,
 )
 
 
@@ -33,6 +34,7 @@ def load_all():
         _load_municipalities(db)
         _load_institutions(db)
         _load_acts(db)
+        _load_documents(db)
         db.flush()
         _load_procedures(db)
         db.flush()
@@ -40,6 +42,7 @@ def load_all():
         _load_fee_tariffs(db)
         _load_rules(db)
         _load_project_types(db)
+        _load_procedure_io(db)
         db.commit()
         print("Seed data loaded successfully.")
     except Exception as exc:
@@ -161,6 +164,31 @@ def _load_project_types(db):
             base_procedure_set=data["procedures"],
         ))
     print(f"  project_types: {len(PROJECT_TYPES)}")
+
+
+def _load_documents(db):
+    for row in DOCUMENTS:
+        if db.get(Document, row["id"]):
+            continue
+        db.add(Document(id=row["id"], name=row["name"], issuer_institution_id=row.get("issuer")))
+    print(f"  documents: {len(DOCUMENTS)}")
+
+
+def _load_procedure_io(db):
+    # output_document is a field on the procedure — set it even if the procedure
+    # row already existed (the documents seed may post-date it).
+    for proc_id, doc_id in PROCEDURE_OUTPUTS.items():
+        proc = db.get(Procedure, proc_id)
+        if proc is not None:
+            proc.output_document_id = doc_id
+    links = 0
+    for proc_id, doc_ids in PROCEDURE_INPUTS.items():
+        for doc_id in doc_ids:
+            if db.get(ProcedureInput, (proc_id, doc_id)):
+                continue
+            db.add(ProcedureInput(procedure_id=proc_id, document_id=doc_id))
+            links += 1
+    print(f"  procedure_inputs: {links}; outputs set: {len(PROCEDURE_OUTPUTS)}")
 
 
 if __name__ == "__main__":
