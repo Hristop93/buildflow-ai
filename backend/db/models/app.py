@@ -130,3 +130,22 @@ class Subscription(Base):
     active_until = Column(DateTime(timezone=True), nullable=True)
     stripe_sub_id = Column(String, nullable=True)
     status = Column(String, nullable=True)
+
+
+class ValidationRequest(Base):
+    """A dd user's request for expert validation of a project, and the admin's
+    handling of it (SPEC 5.2 / 5.3 'Опашка валидации')."""
+    __tablename__ = "validation_requests"
+    __table_args__ = {"schema": SCHEMA}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey("app.projects.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("app.users.id"), nullable=False)
+    # requested | in_review | approved | rejected
+    status = Column(String, nullable=False, default="requested", server_default="requested")
+    note = Column(Text, nullable=True)          # the requester's note
+    review_note = Column(Text, nullable=True)   # the reviewer's note
+    certified_pdf_url = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("app.users.id"), nullable=True)

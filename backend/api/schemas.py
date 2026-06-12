@@ -144,3 +144,33 @@ class TariffOut(BaseModel):
     act_id: str | None
     valid_from: date | None
     valid_to: date | None
+
+
+# --- Expert validation (dd) --------------------------------------------------
+class ValidationRequestIn(BaseModel):
+    note: str | None = None
+
+
+class ValidationRequestOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: int
+    status: str
+    note: str | None
+    review_note: str | None
+    certified_pdf_url: str | None
+    created_at: Any
+    reviewed_at: Any
+
+
+class ValidationQueueItem(ValidationRequestOut):
+    """Admin view of the queue — adds who/what so the reviewer has context."""
+    project_name: str
+    requester_email: str
+
+
+class ValidationReview(BaseModel):
+    status: str  # in_review | approved | rejected
+    review_note: str | None = None
+    certified_pdf_url: str | None = None
