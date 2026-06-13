@@ -64,6 +64,20 @@ def test_critical_path_420():
     assert sched["total_days"] == 420, sched["total_days"]
 
 
+def test_lag_and_start_start_links():
+    g = _graph()
+    base = compute_schedule(g)["total_days"]
+    # a +30d lag on a critical-path finish_start edge pushes the deadline out
+    fs_lag = compute_schedule(g, edge_meta={("PRO-11", "PRO-09"): {"link_type": "finish_start", "lag_days": 30}})
+    assert fs_lag["total_days"] == base + 30, (fs_lag["total_days"], base)
+    # start_start lets the successor begin with its predecessor (here +0),
+    # overlapping work and finishing no later than the finish_start baseline
+    ss = compute_schedule(g, edge_meta={("PRO-11", "PRO-09"): {"link_type": "start_start", "lag_days": 0}})
+    assert ss["total_days"] <= base, (ss["total_days"], base)
+    # empty edge_meta == the etalon
+    assert compute_schedule(g, edge_meta={})["total_days"] == 420
+
+
 def test_fees_total_39870():
     g = _graph()
     items, total = compute_fees(g["active"], P, fee_tariffs=seed.FEE_TARIFFS, acts=seed.ACTS)

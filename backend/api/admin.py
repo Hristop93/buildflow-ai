@@ -395,11 +395,14 @@ def create_dependency(payload: schemas.DependencyIn, db: Session = Depends(get_d
     if payload.successor_id == payload.predecessor_id:
         raise HTTPException(400, "a procedure cannot depend on itself")
     _require(db, Municipality, payload.municipality_id, "municipality_id")
+    if payload.link_type not in ("finish_start", "start_start"):
+        raise HTTPException(400, "link_type must be finish_start or start_start")
     if db.get(Dependency, (payload.successor_id, payload.predecessor_id)) is not None:
         raise HTTPException(409, "this edge already exists")
     dep = Dependency(
         successor_id=payload.successor_id, predecessor_id=payload.predecessor_id,
         municipality_id=payload.municipality_id, link_type=payload.link_type,
+        lag_days=payload.lag_days,
     )
     db.add(dep)
     db.commit()

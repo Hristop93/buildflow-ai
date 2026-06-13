@@ -255,7 +255,8 @@ class DependencyIn(BaseModel):
     successor_id: str
     predecessor_id: str
     municipality_id: int | None = None
-    link_type: str = "finish_start"
+    link_type: str = "finish_start"   # finish_start | start_start
+    lag_days: int = 0                 # negative = lead/overlap
 
 
 class DependencyOut(BaseModel):
@@ -265,6 +266,7 @@ class DependencyOut(BaseModel):
     predecessor_id: str
     municipality_id: int | None
     link_type: str | None
+    lag_days: int
 
 
 # --- "Актуалност" subscription -----------------------------------------------
