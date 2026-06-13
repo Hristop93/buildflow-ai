@@ -1,0 +1,4 @@
+municipality,procedure_id,description,basis,rate,min_fee,max_fee,act_id,valid_from
+Варна,PRO-09,Такса разрешение за строеж,per_sqm_rzp,1.5,50,,VARNA-TAKSI-1,2024-01-01
+Варна,PRO-02,Такса скица,fixed,25,,,VARNA-TAKSI-1,2024-01-01
+,PRO-13,Такса лиценз КЕВР (национална),fixed,2000,,,ZUT-137,

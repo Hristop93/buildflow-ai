@@ -23,6 +23,7 @@ from backend.db.models.core import (
 from backend.api import schemas
 from backend.api.deps import get_current_admin
 from backend.services.monitoring import propagate_tariff_change
+from backend.services import import_csv
 from backend.services.import_csv import import_municipalities, import_tariffs, ImportError_
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_admin)])
@@ -527,5 +528,33 @@ def import_tariffs_csv(
 ):
     try:
         return import_tariffs(db, body.decode("utf-8-sig"), dry_run=dry_run)
+    except ImportError_ as e:
+        raise HTTPException(422, {"errors": e.errors})
+
+
+# The rest of the catalog. Import order respects FKs: institutions -> acts /
+# documents -> procedures -> procedure-inputs / dependencies -> tariffs.
+_IMPORTERS = {
+    "institutions": import_csv.import_institutions,
+    "acts": import_csv.import_acts,
+    "documents": import_csv.import_documents,
+    "procedures": import_csv.import_procedures,
+    "procedure-inputs": import_csv.import_procedure_inputs,
+    "dependencies": import_csv.import_dependencies,
+}
+
+
+@router.post("/import/{entity}")
+def import_catalog_csv(
+    entity: str,
+    dry_run: bool = False,
+    body: bytes = Body(..., media_type="text/csv"),
+    db: Session = Depends(get_db),
+):
+    fn = _IMPORTERS.get(entity)
+    if fn is None:
+        raise HTTPException(404, f"no CSV importer for {entity!r}")
+    try:
+        return fn(db, body.decode("utf-8-sig"), dry_run=dry_run)
     except ImportError_ as e:
         raise HTTPException(422, {"errors": e.errors})

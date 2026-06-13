@@ -1,0 +1,3 @@
+id,name,institution_id,statutory_term_days,term_basis,act_id,output_document_id,municipality,note
+PRO-09,Издаване на разрешение за строеж,INST-01,7,working,ZUT-148,DOC-09,,срокът по чл.148 е в работни дни
+VAR-EKO-1,Общинско екологично съгласуване (Варна),INST-01,30,calendar,,,Варна,само за проекти във Варна

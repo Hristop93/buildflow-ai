@@ -1,0 +1,4 @@
+successor_id,predecessor_id,link_type,lag_days,municipality
+PRO-09,PRO-08,finish_start,0,
+PRO-11,PRO-09,finish_start,14,
+VAR-EKO-1,PRO-02,finish_start,0,Варна
