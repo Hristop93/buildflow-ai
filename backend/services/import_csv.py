@@ -25,7 +25,10 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.db.models.core import Municipality, FeeTariff, Procedure, NormativeAct
+from backend.db.models.core import (
+    Municipality, FeeTariff, Procedure, NormativeAct,
+    Institution, Document, ProcedureInput, Dependency,
+)
 
 ALLOWED_BASES = {"fixed", "per_sqm_rzp", "pct_of_value", "per_mw"}
 ALLOWED_COVERAGE = {"verified", "partial", "none"}
@@ -47,7 +50,22 @@ def _read(csv_text: str, required: set[str]) -> list[dict]:
     missing = required - headers
     if missing:
         raise ImportError_([{"row": 0, "error": f"missing column(s): {', '.join(sorted(missing))}"}])
-    return [{k: (v or "").strip() for k, v in row.items()} for row in reader]
+    return [{k: (v or "").strip() for k, v in (row or {}).items()} for row in reader]
+
+
+def _finish(db: Session, errors: list, dry_run: bool):
+    """All-or-nothing: any error rolls the whole file back; dry-run never writes."""
+    if errors:
+        db.rollback()
+        raise ImportError_(errors)
+    if dry_run:
+        db.rollback()
+    else:
+        db.commit()
+
+
+def _opt_int(raw: str):
+    return int(raw) if raw not in ("", None) else None
 
 
 def import_municipalities(db: Session, csv_text: str, *, dry_run: bool = False) -> dict:
@@ -174,3 +192,202 @@ def import_tariffs(db: Session, csv_text: str, *, dry_run: bool = False) -> dict
         "rows": len(rows), "created": created, "superseded": superseded,
         "skipped": skipped, "dry_run": dry_run,
     }
+
+
+def import_institutions(db: Session, csv_text: str, *, dry_run: bool = False) -> dict:
+    """Columns: id,name,type"""
+    rows = _read(csv_text, {"id", "name"})
+    existing = {i.id: i for i in db.scalars(select(Institution)).all()}
+    created, updated, errors = 0, 0, []
+    for i, row in enumerate(rows, start=2):
+        if not row["id"] or not row["name"]:
+            errors.append({"row": i, "error": "id and name are required"})
+            continue
+        obj = existing.get(row["id"])
+        if obj is None:
+            obj = Institution(id=row["id"], name=row["name"], inst_type=row.get("type") or None)
+            existing[row["id"]] = obj
+            if not dry_run:
+                db.add(obj)
+            created += 1
+        else:
+            obj.name = row["name"]
+            if row.get("type"):
+                obj.inst_type = row["type"]
+            updated += 1
+    _finish(db, errors, dry_run)
+    return {"rows": len(rows), "created": created, "updated": updated, "dry_run": dry_run}
+
+
+def import_acts(db: Session, csv_text: str, *, dry_run: bool = False) -> dict:
+    """Columns: id,title,level,article,valid_from,municipality,source_url.
+    Acts are append-only — an existing id is skipped (edit via the revise API)."""
+    rows = _read(csv_text, {"id", "title", "level"})
+    existing = {a.id for a in db.scalars(select(NormativeAct)).all()}
+    municipalities = {m.name: m.id for m in db.scalars(select(Municipality)).all()}
+    created, skipped, errors = 0, 0, []
+    for i, row in enumerate(rows, start=2):
+        if not row["id"] or not row["title"]:
+            errors.append({"row": i, "error": "id and title are required"}); continue
+        if row["level"] not in ("state", "municipal"):
+            errors.append({"row": i, "error": "level must be state or municipal"}); continue
+        mun_id = None
+        if row.get("municipality"):
+            mun_id = municipalities.get(row["municipality"])
+            if mun_id is None:
+                errors.append({"row": i, "error": f"unknown municipality: {row['municipality']}"}); continue
+        try:
+            vf = date.fromisoformat(row["valid_from"]) if row.get("valid_from") else date.today()
+        except ValueError:
+            errors.append({"row": i, "error": f"bad valid_from: {row['valid_from']!r}"}); continue
+        if row["id"] in existing:
+            skipped += 1; continue
+        existing.add(row["id"])
+        if not dry_run:
+            db.add(NormativeAct(id=row["id"], title=row["title"], level=row["level"],
+                                article=row.get("article") or None, valid_from=vf,
+                                municipality_id=mun_id, source_url=row.get("source_url") or None))
+        created += 1
+    _finish(db, errors, dry_run)
+    return {"rows": len(rows), "created": created, "skipped": skipped, "dry_run": dry_run}
+
+
+def import_documents(db: Session, csv_text: str, *, dry_run: bool = False) -> dict:
+    """Columns: id,name,issuer_institution_id,doc_type,note"""
+    rows = _read(csv_text, {"id", "name"})
+    existing = {d.id: d for d in db.scalars(select(Document)).all()}
+    institutions = {i.id for i in db.scalars(select(Institution)).all()}
+    created, updated, errors = 0, 0, []
+    for i, row in enumerate(rows, start=2):
+        if not row["id"] or not row["name"]:
+            errors.append({"row": i, "error": "id and name are required"}); continue
+        issuer = row.get("issuer_institution_id") or None
+        if issuer and issuer not in institutions:
+            errors.append({"row": i, "error": f"unknown issuer_institution_id: {issuer}"}); continue
+        obj = existing.get(row["id"])
+        if obj is None:
+            obj = Document(id=row["id"], name=row["name"], issuer_institution_id=issuer,
+                           doc_type=row.get("doc_type") or None, note=row.get("note") or None)
+            existing[row["id"]] = obj
+            if not dry_run:
+                db.add(obj)
+            created += 1
+        else:
+            obj.name = row["name"]
+            obj.issuer_institution_id = issuer
+            if row.get("doc_type"):
+                obj.doc_type = row["doc_type"]
+            updated += 1
+    _finish(db, errors, dry_run)
+    return {"rows": len(rows), "created": created, "updated": updated, "dry_run": dry_run}
+
+
+def import_procedures(db: Session, csv_text: str, *, dry_run: bool = False) -> dict:
+    """Columns: id,name,institution_id,statutory_term_days,term_basis,act_id,
+    output_document_id,municipality,note"""
+    rows = _read(csv_text, {"id", "name"})
+    existing = {p.id: p for p in db.scalars(select(Procedure)).all()}
+    institutions = {i.id for i in db.scalars(select(Institution)).all()}
+    acts = {a.id for a in db.scalars(select(NormativeAct)).all()}
+    documents = {d.id for d in db.scalars(select(Document)).all()}
+    municipalities = {m.name: m.id for m in db.scalars(select(Municipality)).all()}
+    created, updated, errors = 0, 0, []
+    for i, row in enumerate(rows, start=2):
+        if not row["id"] or not row["name"]:
+            errors.append({"row": i, "error": "id and name are required"}); continue
+        basis = row.get("term_basis") or "calendar"
+        if basis not in ("calendar", "working"):
+            errors.append({"row": i, "error": "term_basis must be calendar or working"}); continue
+        inst = row.get("institution_id") or None
+        if inst and inst not in institutions:
+            errors.append({"row": i, "error": f"unknown institution_id: {inst}"}); continue
+        act = row.get("act_id") or None
+        if act and act not in acts:
+            errors.append({"row": i, "error": f"unknown act_id: {act}"}); continue
+        out_doc = row.get("output_document_id") or None
+        if out_doc and out_doc not in documents:
+            errors.append({"row": i, "error": f"unknown output_document_id: {out_doc}"}); continue
+        mun_id = None
+        if row.get("municipality"):
+            mun_id = municipalities.get(row["municipality"])
+            if mun_id is None:
+                errors.append({"row": i, "error": f"unknown municipality: {row['municipality']}"}); continue
+        try:
+            term = _opt_int(row.get("statutory_term_days", ""))
+        except ValueError:
+            errors.append({"row": i, "error": f"bad statutory_term_days: {row.get('statutory_term_days')!r}"}); continue
+        obj = existing.get(row["id"])
+        if obj is None:
+            obj = Procedure(id=row["id"], name=row["name"], institution_id=inst,
+                            statutory_term_days=term, term_basis=basis, act_id=act,
+                            output_document_id=out_doc, municipality_id=mun_id,
+                            note=row.get("note") or None)
+            existing[row["id"]] = obj
+            if not dry_run:
+                db.add(obj)
+            created += 1
+        else:
+            obj.name, obj.institution_id, obj.statutory_term_days = row["name"], inst, term
+            obj.term_basis, obj.act_id, obj.output_document_id = basis, act, out_doc
+            updated += 1
+    _finish(db, errors, dry_run)
+    return {"rows": len(rows), "created": created, "updated": updated, "dry_run": dry_run}
+
+
+def import_procedure_inputs(db: Session, csv_text: str, *, dry_run: bool = False) -> dict:
+    """Columns: procedure_id,document_id"""
+    rows = _read(csv_text, {"procedure_id", "document_id"})
+    procedures = {p.id for p in db.scalars(select(Procedure)).all()}
+    documents = {d.id for d in db.scalars(select(Document)).all()}
+    seen = {(pi.procedure_id, pi.document_id) for pi in db.scalars(select(ProcedureInput)).all()}
+    created, skipped, errors = 0, 0, []
+    for i, row in enumerate(rows, start=2):
+        if row["procedure_id"] not in procedures:
+            errors.append({"row": i, "error": f"unknown procedure_id: {row['procedure_id']}"}); continue
+        if row["document_id"] not in documents:
+            errors.append({"row": i, "error": f"unknown document_id: {row['document_id']}"}); continue
+        key = (row["procedure_id"], row["document_id"])
+        if key in seen:
+            skipped += 1; continue
+        seen.add(key)
+        if not dry_run:
+            db.add(ProcedureInput(procedure_id=row["procedure_id"], document_id=row["document_id"]))
+        created += 1
+    _finish(db, errors, dry_run)
+    return {"rows": len(rows), "created": created, "skipped": skipped, "dry_run": dry_run}
+
+
+def import_dependencies(db: Session, csv_text: str, *, dry_run: bool = False) -> dict:
+    """Columns: successor_id,predecessor_id,link_type,lag_days,municipality"""
+    rows = _read(csv_text, {"successor_id", "predecessor_id"})
+    procedures = {p.id for p in db.scalars(select(Procedure)).all()}
+    municipalities = {m.name: m.id for m in db.scalars(select(Municipality)).all()}
+    seen = {(d.successor_id, d.predecessor_id) for d in db.scalars(select(Dependency)).all()}
+    created, skipped, errors = 0, 0, []
+    for i, row in enumerate(rows, start=2):
+        s, p = row["successor_id"], row["predecessor_id"]
+        if s not in procedures or p not in procedures:
+            errors.append({"row": i, "error": "successor_id/predecessor_id must be known procedures"}); continue
+        if s == p:
+            errors.append({"row": i, "error": "a procedure cannot depend on itself"}); continue
+        link = row.get("link_type") or "finish_start"
+        if link not in ("finish_start", "start_start"):
+            errors.append({"row": i, "error": "link_type must be finish_start or start_start"}); continue
+        try:
+            lag = int(row["lag_days"]) if row.get("lag_days") else 0
+        except ValueError:
+            errors.append({"row": i, "error": f"bad lag_days: {row.get('lag_days')!r}"}); continue
+        mun_id = None
+        if row.get("municipality"):
+            mun_id = municipalities.get(row["municipality"])
+            if mun_id is None:
+                errors.append({"row": i, "error": f"unknown municipality: {row['municipality']}"}); continue
+        if (s, p) in seen:
+            skipped += 1; continue
+        seen.add((s, p))
+        if not dry_run:
+            db.add(Dependency(successor_id=s, predecessor_id=p, link_type=link,
+                              lag_days=lag, municipality_id=mun_id))
+        created += 1
+    _finish(db, errors, dry_run)
+    return {"rows": len(rows), "created": created, "skipped": skipped, "dry_run": dry_run}
