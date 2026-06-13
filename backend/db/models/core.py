@@ -87,7 +87,9 @@ class Dependency(Base):
 
     successor_id = Column(String, ForeignKey("core.procedures.id"), primary_key=True)
     predecessor_id = Column(String, ForeignKey("core.procedures.id"), primary_key=True)
-    link_type = Column(String, default="finish_start")
+    link_type = Column(String, default="finish_start")  # finish_start | start_start
+    # Lag in days added to the predecessor anchor (negative = lead/overlap).
+    lag_days = Column(Integer, nullable=False, default=0, server_default="0")
     # None = national edge; set = applies only in this municipality.
     municipality_id = Column(Integer, ForeignKey("core.municipalities.id"), nullable=True)
 

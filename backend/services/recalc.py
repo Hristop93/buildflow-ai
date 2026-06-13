@@ -77,13 +77,13 @@ def run_recalc(db: Session, project_id: int, *, reason: str = "recalc") -> dict:
         if n.planned_duration_days is not None
     }
 
-    sched = compute_schedule(graph, durations=overrides)
+    sched = compute_schedule(graph, durations=overrides, edge_meta=catalog.edge_meta)
 
     # SPEC 4.4: only the DEVIATION from the statutory schedule shifts the
     # cashflows (the etalon prices the statutory baseline in). No overrides
     # means delay 0 — skip the second CPM pass.
     if overrides:
-        statutory_total = compute_schedule(graph)["total_days"]
+        statutory_total = compute_schedule(graph, edge_meta=catalog.edge_meta)["total_days"]
         delay_days = sched["total_days"] - statutory_total
     else:
         delay_days = 0

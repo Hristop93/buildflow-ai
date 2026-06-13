@@ -29,6 +29,7 @@ class Catalog:
     project_types: dict[str, dict]
     documents: dict[str, str]              # doc_id -> name
     procedure_inputs: dict[str, list[str]]  # procedure_id -> [doc_id]
+    edge_meta: dict                         # (successor, predecessor) -> {link_type, lag_days}
 
 
 def _coerce(value: str):
@@ -70,8 +71,13 @@ def load_catalog(db: Session, municipality_id: int | None = None) -> Catalog:
         procedure_inputs.setdefault(pi.procedure_id, []).append(pi.document_id)
 
     dependencies: dict[str, list[str]] = {}
+    edge_meta: dict = {}
     for d in db.scalars(select(Dependency).where(_scope(Dependency))).all():
         dependencies.setdefault(d.successor_id, []).append(d.predecessor_id)
+        edge_meta[(d.successor_id, d.predecessor_id)] = {
+            "link_type": d.link_type or "finish_start",
+            "lag_days": d.lag_days or 0,
+        }
 
     rules = [
         {
@@ -135,4 +141,5 @@ def load_catalog(db: Session, municipality_id: int | None = None) -> Catalog:
         project_types=project_types,
         documents=documents,
         procedure_inputs=procedure_inputs,
+        edge_meta=edge_meta,
     )
