@@ -7,6 +7,8 @@ export interface GanttNode {
   end: number
   critical: boolean
   name?: string
+  start_date?: string
+  end_date?: string
 }
 
 const LABEL_W = 200
@@ -78,7 +80,7 @@ export default function Gantt({
               stroke={isSel ? 'var(--amber)' : 'none'}
               strokeWidth={isSel ? 2 : 0}
             >
-              <title>{`${label}: ден ${r.start}–${r.end}${r.critical ? ' (критичен)' : ''}`}</title>
+              <title>{`${label}: ден ${r.start}–${r.end}${r.start_date ? ` (${r.start_date} – ${r.end_date})` : ''}${r.critical ? ' · критичен' : ''}`}</title>
             </rect>
           </g>
         )

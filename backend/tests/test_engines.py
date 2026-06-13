@@ -64,6 +64,30 @@ def test_critical_path_420():
     assert sched["total_days"] == 420, sched["total_days"]
 
 
+def test_working_days_calendar():
+    from datetime import date
+    from backend.engines.calendar_bg import orthodox_easter, add_working_days, holidays_in_range
+    assert orthodox_easter(2024) == date(2024, 5, 5)              # known: 5 May 2024
+    hol = holidays_in_range(2025, 2025)
+    assert add_working_days(date(2025, 1, 3), 5, hol) == date(2025, 1, 10)  # spans a weekend
+
+    g = _graph()
+    cal = compute_schedule(g, start_date=date(2025, 1, 6))
+    assert cal["total_days"] == 420                               # all-calendar -> etalon
+    assert "start_date" in cal["nodes"]["PRO-01"]                 # real dates attached
+
+    # flip the 120-day СМР step to working days -> its calendar span grows
+    procs = [dict(p) for p in seed.PROCEDURES]
+    for p in procs:
+        if p["id"] == "PRO-11":
+            p["term_basis"] = "working"
+    gw = build_active_graph(P, procedures=procs, dependencies=seed.DEPENDENCIES,
+                            rules=seed.RULES, project_types=seed.PROJECT_TYPES)
+    work = compute_schedule(gw, start_date=date(2025, 1, 6))
+    assert work["nodes"]["PRO-11"]["duration"] > 120, work["nodes"]["PRO-11"]["duration"]
+    assert work["total_days"] > 420
+
+
 def test_lag_and_start_start_links():
     g = _graph()
     base = compute_schedule(g)["total_days"]
