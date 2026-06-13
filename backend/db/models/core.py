@@ -100,7 +100,12 @@ class FeeTariff(Base):
     procedure_id = Column(String, ForeignKey("core.procedures.id"), nullable=False)
     description = Column(String, nullable=True)
     basis = Column(String, nullable=False)  # fixed | per_sqm_rzp | pct_of_value | per_mw
-    rate = Column(Float, nullable=False)
+    rate = Column(Float, nullable=False, default=0.0)
+    # Optional richer pricing (SPEC: real tariffs have brackets/caps).
+    # tiers: [{"up_to": number|null, "rate": number}, ...] progressive; ignores `rate`.
+    tiers = Column(JSON, nullable=True)
+    min_fee = Column(Float, nullable=True)
+    max_fee = Column(Float, nullable=True)
     municipality_id = Column(Integer, ForeignKey("core.municipalities.id"), nullable=True)
     act_id = Column(String, ForeignKey("core.normative_acts.id"), nullable=True)
     valid_from = Column(Date, nullable=True)

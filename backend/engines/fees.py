@@ -18,6 +18,31 @@ def _basis_value(basis: str, params: dict) -> float:
     raise ValueError(f"unknown basis {basis!r}")
 
 
+def _amount(tariff, base):
+    """Flat (base × rate) or progressive over `tiers`, then clamped to
+    [min_fee, max_fee]. Plain tariffs (no tiers/min/max) reduce to base × rate."""
+    tiers = tariff.get("tiers")
+    if tiers:
+        amount, lower = 0.0, 0.0
+        for tier in tiers:                       # ordered, last up_to = None
+            up_to = tier.get("up_to")
+            cap = base if up_to is None else min(base, up_to)
+            if cap > lower:
+                amount += (cap - lower) * tier["rate"]
+                lower = cap
+            if up_to is not None and base <= up_to:
+                break
+    else:
+        amount = base * (tariff.get("rate") or 0.0)
+
+    min_fee, max_fee = tariff.get("min_fee"), tariff.get("max_fee")
+    if min_fee is not None:
+        amount = max(amount, min_fee)
+    if max_fee is not None:
+        amount = min(amount, max_fee)
+    return amount
+
+
 def _resolve(tariffs, municipality_id):
     """Per procedure, a municipality-specific tariff overrides the national one
     (SPEC 4.2): if the project's municipality has its own tariff(s) for this
@@ -46,7 +71,7 @@ def compute_fees(active_ids, params, *, fee_tariffs, acts, municipality_id=None)
     for proc in sorted(by_proc):
         for t in _resolve(by_proc[proc], municipality_id):
             base = _basis_value(t["basis"], params)
-            amount = base * t["rate"]
+            amount = _amount(t, base)
             act = acts_by_id.get(t["act"])
             citation = None
             if act:
@@ -62,7 +87,8 @@ def compute_fees(active_ids, params, *, fee_tariffs, acts, municipality_id=None)
                 "description": t["desc"],
                 "basis": t["basis"],
                 "basis_value": base,
-                "rate": t["rate"],
+                "rate": t.get("rate"),
+                "tiered": bool(t.get("tiers")),
                 "amount": amount,
                 "citation": citation,
             })

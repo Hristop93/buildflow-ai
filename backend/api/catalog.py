@@ -102,6 +102,9 @@ def load_catalog(db: Session, municipality_id: int | None = None) -> Catalog:
             "desc": t.description,
             "basis": t.basis,
             "rate": t.rate,
+            "tiers": t.tiers,
+            "min_fee": t.min_fee,
+            "max_fee": t.max_fee,
             "act": t.act_id,
             "municipality": t.municipality_id,  # None = national
         }

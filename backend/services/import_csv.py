@@ -124,8 +124,10 @@ def import_tariffs(db: Session, csv_text: str, *, dry_run: bool = False) -> dict
             continue
         try:
             rate = _parse_rate(row["rate"])
+            min_fee = _parse_rate(row["min_fee"]) if row.get("min_fee") else None
+            max_fee = _parse_rate(row["max_fee"]) if row.get("max_fee") else None
         except ValueError:
-            errors.append({"row": i, "error": f"bad rate: {row['rate']!r}"})
+            errors.append({"row": i, "error": f"bad number in rate/min_fee/max_fee"})
             continue
         try:
             valid_from = date.fromisoformat(row["valid_from"]) if row.get("valid_from") else date.today()
@@ -135,7 +137,8 @@ def import_tariffs(db: Session, csv_text: str, *, dry_run: bool = False) -> dict
 
         key = (row["procedure_id"], mun_id)
         current = in_force.get(key)
-        if current is not None and current.basis == row["basis"] and current.rate == rate:
+        if (current is not None and current.basis == row["basis"] and current.rate == rate
+                and current.min_fee == min_fee and current.max_fee == max_fee and current.tiers is None):
             skipped += 1
             continue
 
@@ -145,6 +148,8 @@ def import_tariffs(db: Session, csv_text: str, *, dry_run: bool = False) -> dict
             description=row.get("description") or None,
             basis=row["basis"],
             rate=rate,
+            min_fee=min_fee,
+            max_fee=max_fee,
             municipality_id=mun_id,
             act_id=act_id,
             valid_from=valid_from,

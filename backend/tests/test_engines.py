@@ -88,6 +88,18 @@ def test_municipal_tariff_overrides_national():
     assert round(total) == 39870 + 250, total          # +250 = (2.0-1.5)*500
 
 
+def test_tiered_and_clamped_fees():
+    from backend.engines.fees import _amount
+    # progressive: first 1000 @ 1.0, remainder @ 0.5; base 3000 -> 1000 + 1000 = 2000
+    tiered = {"tiers": [{"up_to": 1000, "rate": 1.0}, {"up_to": None, "rate": 0.5}]}
+    assert _amount(tiered, 3000) == 2000.0
+    assert _amount(tiered, 800) == 800.0           # within first bracket
+    # min/max clamp on a flat rate
+    assert _amount({"rate": 1.5, "min_fee": 1000}, 100) == 1000.0   # base×rate=150 -> floored
+    assert _amount({"rate": 1.5, "max_fee": 500}, 1000) == 500.0    # 1500 -> capped
+    assert _amount({"rate": 2.0}, 10) == 20.0                       # plain unchanged
+
+
 def test_fees_carry_citations():
     g = _graph()
     items, _ = compute_fees(g["active"], P, fee_tariffs=seed.FEE_TARIFFS, acts=seed.ACTS)

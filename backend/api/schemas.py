@@ -114,10 +114,18 @@ class ActOut(BaseModel):
 
 
 # --- Admin: fee tariffs ------------------------------------------------------
+class FeeTier(BaseModel):
+    up_to: float | None = None     # None = no upper bound (last bracket)
+    rate: float
+
+
 class TariffCreate(BaseModel):
     procedure_id: str
     basis: str                     # fixed | per_sqm_rzp | pct_of_value | per_mw
-    rate: float
+    rate: float = 0.0              # ignored when tiers are given
+    tiers: list[FeeTier] | None = None
+    min_fee: float | None = None
+    max_fee: float | None = None
     description: str | None = None
     municipality_id: int | None = None
     act_id: str | None = None
@@ -127,6 +135,9 @@ class TariffCreate(BaseModel):
 class TariffRevise(BaseModel):
     valid_from: date
     rate: float | None = None
+    tiers: list[FeeTier] | None = None
+    min_fee: float | None = None
+    max_fee: float | None = None
     description: str | None = None
     act_id: str | None = None
     municipality_id: int | None = None
@@ -140,6 +151,9 @@ class TariffOut(BaseModel):
     description: str | None
     basis: str
     rate: float
+    tiers: list[FeeTier] | None
+    min_fee: float | None
+    max_fee: float | None
     municipality_id: int | None
     act_id: str | None
     valid_from: date | None
