@@ -249,7 +249,10 @@ function ScheduleSection({
       {sel && selNode && (
         <div className="card" style={{ marginTop: 16, background: 'var(--bg)' }}>
           <h2 style={{ marginBottom: 4 }}>{selNode.name ?? sel}</h2>
-          <p className="muted" style={{ margin: 0 }}>ден {selNode.start}–{selNode.end}{selNode.critical ? ' · критичен път' : ''}</p>
+          <p className="muted" style={{ margin: 0 }}>
+            {selNode.start_date ? `${selNode.start_date} – ${selNode.end_date}` : `ден ${selNode.start}–${selNode.end}`}
+            {selNode.critical ? ' · критичен път' : ''}
+          </p>
           {err && <div className="error">{err}</div>}
           <div className="grid2">
             <div>

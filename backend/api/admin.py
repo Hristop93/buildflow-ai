@@ -274,10 +274,12 @@ def create_procedure(payload: schemas.ProcedureIn, db: Session = Depends(get_db)
     pid = payload.id or _new_id("PRO")
     if db.get(Procedure, pid) is not None:
         raise HTTPException(409, f"procedure {pid} already exists")
+    if payload.term_basis not in ("calendar", "working"):
+        raise HTTPException(400, "term_basis must be calendar or working")
     proc = Procedure(
         id=pid, name=payload.name, institution_id=payload.institution_id,
-        statutory_term_days=payload.statutory_term_days, act_id=payload.act_id,
-        municipality_id=payload.municipality_id, note=payload.note,
+        statutory_term_days=payload.statutory_term_days, term_basis=payload.term_basis,
+        act_id=payload.act_id, municipality_id=payload.municipality_id, note=payload.note,
     )
     db.add(proc)
     db.commit()
@@ -304,7 +306,9 @@ def update_procedure(procedure_id: str, payload: schemas.ProcedureUpdate, db: Se
     _require(db, Institution, payload.institution_id, "institution_id")
     _require(db, NormativeAct, payload.act_id, "act_id")
     _require(db, Document, payload.output_document_id, "output_document_id")
-    for field in ("name", "institution_id", "statutory_term_days", "act_id", "output_document_id", "note"):
+    if payload.term_basis is not None and payload.term_basis not in ("calendar", "working"):
+        raise HTTPException(400, "term_basis must be calendar or working")
+    for field in ("name", "institution_id", "statutory_term_days", "term_basis", "act_id", "output_document_id", "note"):
         val = getattr(payload, field)
         if val is not None:
             setattr(proc, field, val)

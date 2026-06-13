@@ -67,6 +67,8 @@ class Procedure(Base):
     institution_id = Column(String, ForeignKey("core.institutions.id"), nullable=True)
     output_document_id = Column(String, ForeignKey("core.documents.id"), nullable=True)
     statutory_term_days = Column(Integer, nullable=True)
+    # How statutory_term_days is counted: calendar | working (работни дни).
+    term_basis = Column(String, nullable=False, default="calendar", server_default="calendar")
     act_id = Column(String, ForeignKey("core.normative_acts.id"), nullable=True)
     note = Column(Text, nullable=True)
     # None = national; set = a step required only in this municipality.

@@ -9,6 +9,7 @@ are returned to the client happens at the read endpoints, not here.
 from __future__ import annotations
 
 import json
+from datetime import date
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
@@ -77,13 +78,21 @@ def run_recalc(db: Session, project_id: int, *, reason: str = "recalc") -> dict:
         if n.planned_duration_days is not None
     }
 
-    sched = compute_schedule(graph, durations=overrides, edge_meta=catalog.edge_meta)
+    # Optional real start date (for working-day calendar mapping). Defaults to
+    # today so the project view can show real dates; absent/invalid -> today.
+    raw_start = params.get("start_date")
+    try:
+        start_date = date.fromisoformat(raw_start) if raw_start else date.today()
+    except (ValueError, TypeError):
+        start_date = date.today()
+
+    sched = compute_schedule(graph, durations=overrides, edge_meta=catalog.edge_meta, start_date=start_date)
 
     # SPEC 4.4: only the DEVIATION from the statutory schedule shifts the
     # cashflows (the etalon prices the statutory baseline in). No overrides
     # means delay 0 — skip the second CPM pass.
     if overrides:
-        statutory_total = compute_schedule(graph, edge_meta=catalog.edge_meta)["total_days"]
+        statutory_total = compute_schedule(graph, edge_meta=catalog.edge_meta, start_date=start_date)["total_days"]
         delay_days = sched["total_days"] - statutory_total
     else:
         delay_days = 0

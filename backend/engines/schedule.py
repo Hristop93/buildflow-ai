@@ -3,8 +3,17 @@
 Forward pass: start = max(end of predecessors); end = start + duration.
 Duration precedence: actual (if known) -> planned -> statutory.
 Marks the critical path and returns the total project duration in days.
+
+When a project start_date is given, offsets are mapped to real calendar dates
+and a procedure with term_basis='working' has its term counted in working days
+(weekends + BG holidays skipped), so its calendar span grows accordingly. With
+no start_date — or all-calendar procedures — the offsets are exactly as before.
 """
 from __future__ import annotations
+
+from datetime import date, timedelta
+
+from backend.engines.calendar_bg import holidays_in_range, add_working_days
 
 
 def _topo_order(active, edges):
@@ -27,12 +36,14 @@ def _topo_order(active, edges):
     return order
 
 
-def compute_schedule(graph, *, durations=None, edge_meta=None):
+def compute_schedule(graph, *, durations=None, edge_meta=None, start_date=None):
     """graph: output of build_active_graph. durations: optional override per node.
     edge_meta: {(successor, predecessor): {"link_type", "lag_days"}} — defaults to
-    finish_start with 0 lag, so a plain graph reproduces the original schedule.
+    finish_start with 0 lag. start_date (a date): when given, nodes carry real
+    start_date/end_date and term_basis='working' terms span the BG calendar.
 
-    Returns dict: nodes {id: {start, end, duration, critical}}, total_days.
+    Returns dict: nodes {id: {start, end, duration, critical[, start_date, end_date]}},
+    total_days.
     """
     active = graph["active"]
     edges = graph["edges"]
@@ -40,7 +51,11 @@ def compute_schedule(graph, *, durations=None, edge_meta=None):
     durations = durations or {}
     edge_meta = edge_meta or {}
 
-    def dur(pid):
+    holidays = set()
+    if start_date is not None:
+        holidays = holidays_in_range(start_date.year, start_date.year + 4)
+
+    def term(pid):
         if pid in durations and durations[pid] is not None:
             return durations[pid]
         return procs[pid]["duration_days"]
@@ -53,6 +68,7 @@ def compute_schedule(graph, *, durations=None, edge_meta=None):
 
     order = _topo_order(active, edges)
     start, end = {}, {}
+    dates = {}  # pid -> (start_date, end_date)
     for n in order:
         s = 0
         for p in edges.get(n, []):
@@ -60,7 +76,18 @@ def compute_schedule(graph, *, durations=None, edge_meta=None):
             anchor = start[p] if link == "start_start" else end[p]
             s = max(s, anchor + lag)
         start[n] = max(0, s)
-        end[n] = start[n] + dur(n)
+        N = term(n)
+        # Working-day terms span a wider calendar window; needs the start date.
+        if start_date is not None and procs[n].get("term_basis") == "working":
+            sd = start_date + timedelta(days=start[n])
+            ed = add_working_days(sd, N, holidays)
+            span = (ed - sd).days
+        else:
+            span = N
+        end[n] = start[n] + span
+        if start_date is not None:
+            sd = start_date + timedelta(days=start[n])
+            dates[n] = (sd, start_date + timedelta(days=end[n]))
 
     total = max(end.values()) if end else 0
 
@@ -74,7 +101,7 @@ def compute_schedule(graph, *, durations=None, edge_meta=None):
                 continue
             link, lag = link_lag(s, n)
             if link == "start_start":
-                bounds.append(start[s] - lag + dur(n))
+                bounds.append(start[s] - lag + (end[n] - start[n]))
             else:
                 bounds.append(start[s] - lag)
         late_finish[n] = min(bounds) if bounds else total
@@ -82,10 +109,14 @@ def compute_schedule(graph, *, durations=None, edge_meta=None):
     nodes = {}
     for n in active:
         slack = late_finish[n] - end[n]
-        nodes[n] = {
+        node = {
             "start": start[n],
             "end": end[n],
-            "duration": dur(n),
+            "duration": end[n] - start[n],
             "critical": slack == 0,
         }
+        if n in dates:
+            node["start_date"] = dates[n][0].isoformat()
+            node["end_date"] = dates[n][1].isoformat()
+        nodes[n] = node
     return {"nodes": nodes, "total_days": total}

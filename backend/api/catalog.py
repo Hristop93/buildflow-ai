@@ -61,6 +61,7 @@ def load_catalog(db: Session, municipality_id: int | None = None) -> Catalog:
             "duration_days": p.statutory_term_days,
             "act": p.act_id,
             "output_document": p.output_document_id,
+            "term_basis": p.term_basis,
         }
         for p in db.scalars(select(Procedure).where(_scope(Procedure))).all()
     ]

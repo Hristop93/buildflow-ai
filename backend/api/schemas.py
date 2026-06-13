@@ -166,6 +166,7 @@ class ProcedureIn(BaseModel):
     name: str
     institution_id: str | None = None
     statutory_term_days: int | None = Field(default=None, ge=0)
+    term_basis: str = "calendar"        # calendar | working
     act_id: str | None = None
     municipality_id: int | None = None  # None = national step
     note: str | None = None
@@ -175,6 +176,7 @@ class ProcedureUpdate(BaseModel):
     name: str | None = None
     institution_id: str | None = None
     statutory_term_days: int | None = Field(default=None, ge=0)
+    term_basis: str | None = None
     act_id: str | None = None
     output_document_id: str | None = None
     note: str | None = None
@@ -187,6 +189,7 @@ class ProcedureOut(BaseModel):
     name: str
     institution_id: str | None
     statutory_term_days: int | None
+    term_basis: str
     act_id: str | None
     output_document_id: str | None
     municipality_id: int | None

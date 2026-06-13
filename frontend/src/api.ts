@@ -108,6 +108,8 @@ export interface ScheduleNode {
   critical: boolean
   name?: string
   status?: string
+  start_date?: string
+  end_date?: string
 }
 
 export interface ScheduleData {
